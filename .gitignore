@@ -1,0 +1,36 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Environment / Secrets
+.env
+.python-version
+
+# Generated data (reproducible via scripts/setup.sh)
+data/outbound_sink/
+data/conversations/
+data/briefs/
+data/job_posts/*.json
+
+# External dependencies (cloned separately)
+tau2-bench/
+
+# Eval outputs (regenerated per run)
+eval/tau2_results/
+eval/trace_log.jsonl
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.pdf
+uv.lock
