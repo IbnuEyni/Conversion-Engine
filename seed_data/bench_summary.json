@@ -1,0 +1,47 @@
+{
+  "last_updated": "2025-04-14",
+  "total_available": 28,
+  "by_stack": {
+    "python": {
+      "available": 8,
+      "levels": {"mid": 4, "senior": 3, "staff": 1},
+      "notes": "Strong data/ML background. 3 have production LLM experience."
+    },
+    "go": {
+      "available": 4,
+      "levels": {"mid": 2, "senior": 2, "staff": 0},
+      "notes": "Infrastructure and microservices focus."
+    },
+    "data_engineering": {
+      "available": 6,
+      "levels": {"mid": 3, "senior": 2, "staff": 1},
+      "notes": "dbt, Spark, Airflow, Snowflake. 2 have Databricks certification."
+    },
+    "ml_ai": {
+      "available": 5,
+      "levels": {"mid": 2, "senior": 2, "staff": 1},
+      "notes": "PyTorch, TensorFlow, MLflow. Staff engineer has agentic systems experience."
+    },
+    "infrastructure": {
+      "available": 3,
+      "levels": {"mid": 1, "senior": 1, "staff": 1},
+      "notes": "AWS/GCP, Kubernetes, Terraform. Staff engineer is ex-FAANG."
+    },
+    "fullstack_js_ts": {
+      "available": 2,
+      "levels": {"mid": 1, "senior": 1, "staff": 0},
+      "notes": "React/Next.js + Node. Available for frontend-heavy projects only."
+    }
+  },
+  "upcoming_availability": {
+    "python": {"count": 3, "available_by": "2025-05-15"},
+    "go": {"count": 1, "available_by": "2025-05-01"},
+    "ml_ai": {"count": 2, "available_by": "2025-06-01"}
+  },
+  "capacity_rules": [
+    "Agent MUST NOT commit engineers that are not shown as available above.",
+    "Agent MAY mention upcoming availability with the date qualifier.",
+    "If prospect needs exceed available bench, agent MUST say so honestly and offer to discuss timeline.",
+    "Agent MUST NOT promise specific individuals — only stack and level counts."
+  ]
+}
