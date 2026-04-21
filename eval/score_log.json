@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2026-04-21T21:52:04.738970+00:00",
+    "label": "dev_quick",
+    "model": "openrouter/qwen/qwen3-235b-a22b",
+    "domain": "retail",
+    "n_tasks": 5,
+    "n_trials": 1,
+    "total_simulations": 5,
+    "passed": 1,
+    "pass_at_1": 0.2,
+    "ci_95_low": 0.0362,
+    "ci_95_high": 0.6245,
+    "wall_clock_s": 688.07,
+    "results_file": "/home/shuaib/Desktop/python/10Acd/10Acweek10/eval/tau2_results/dev_quick_20260421_214036.jsonl",
+    "task_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  }
+]
