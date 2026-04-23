@@ -36,6 +36,45 @@ Submission: Wednesday April 23, 2026 | Acts I & II
    └─────────────────────────────────────────────────────┘
 ```
 
+### Prospect Lifecycle Flow
+
+```
+ Inbound Lead
+      │
+      ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │                  ENRICHMENT PIPELINE                        │
+ │  Crunchbase ──► Funding ──► Layoffs ──► Job Posts ──►      │
+ │  (~0.01s)      (~0.01s)    (~0.01s)    (~0.01s)            │
+ │       Leadership Detection ──► AI Maturity ──► Gap Analysis│
+ │       (~15s, Playwright)      (~8s, LLM)    (~10s, LLM)   │
+ └─────────────────────────┬───────────────────────────────────┘
+                           ▼
+                  ICP Classification
+                  (rule-based, <0.01s)
+                           │
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+    Segment 1-4        Abstain         Disqualified
+    (pitch email)   (exploratory)      (no contact)
+          │                │
+          └───────┬────────┘
+                  ▼
+           Email Outreach
+           (~13s, LLM composition)
+                  │
+                  ▼
+         Reply Classification
+    ┌──────┬──────┬───────┬──────┐
+    ▼      ▼      ▼       ▼      ▼
+ engaged curious defer  object  hard_no
+    │      │      │       │      │
+    ▼      ▼      ▼       ▼      ▼
+ qualify  context close  handle  opt-out
+  + book  + Cal  grace  pattern  HubSpot
+  call    link   fully  match
+```
+
 ### Key Design Decisions
 
 1. **Schema-first data contracts.** All enrichment outputs conform to the official `hiring_signal_brief.schema.json` and `competitor_gap_brief.schema.json` provided in the Tenacious seed data package. This ensures every claim in outreach maps to a verifiable field in the brief.
@@ -102,6 +141,93 @@ The gap analysis module:
 
 Output conforms to `competitor_gap_brief.schema.json`. When no peers are found in the Crunchbase sample, the pipeline returns an empty brief gracefully without hallucinating competitors.
 
+### Sample Output: Competitor Gap Brief (Orrin Labs — from official seed sample)
+
+```json
+{
+  "prospect_domain": "orrin-labs.example",
+  "prospect_sector": "Business Intelligence / Analytics",
+  "prospect_sub_niche": "AI-augmented BI for mid-market",
+  "prospect_ai_maturity_score": 2,
+  "sector_top_quartile_benchmark": 2.75,
+  "competitors_analyzed": [
+    {
+      "name": "Northview Analytics",
+      "ai_maturity_score": 3,
+      "top_quartile": true,
+      "ai_maturity_justification": [
+        "Named VP of AI on public team page since Q4 2025",
+        "Five AI-adjacent open roles including MLOps Platform Engineer"
+      ]
+    },
+    {
+      "name": "Axiom Data Works",
+      "ai_maturity_score": 3,
+      "top_quartile": true,
+      "ai_maturity_justification": [
+        "Head of Applied AI hired November 2025",
+        "Two MLOps Engineer roles open 45+ days"
+      ]
+    }
+  ],
+  "gap_findings": [
+    {
+      "practice": "Dedicated AI/ML leadership role at the executive level",
+      "peer_evidence": [
+        {"competitor_name": "Northview Analytics", "evidence": "VP of AI named on public team page since Q4 2025."},
+        {"competitor_name": "Axiom Data Works", "evidence": "Head of Applied AI hired November 2025."}
+      ],
+      "prospect_state": "No named AI/ML leadership role. CTO holds combined remit.",
+      "confidence": "high"
+    }
+  ],
+  "suggested_pitch_shift": "Lead with the dedicated AI leadership gap (high confidence).",
+  "gap_quality_self_check": {
+    "all_peer_evidence_has_source_url": true,
+    "at_least_one_gap_high_confidence": true,
+    "prospect_silent_but_sophisticated_risk": false
+  }
+}
+```
+
+### Sample Output: Hiring Signal Brief (Orrin Labs — from official seed sample)
+
+```json
+{
+  "prospect_name": "Orrin Labs Inc.",
+  "primary_segment_match": "segment_1_series_a_b",
+  "segment_confidence": 0.82,
+  "ai_maturity": {
+    "score": 2,
+    "confidence": 0.7,
+    "justifications": [
+      {"signal": "ai_adjacent_open_roles", "status": "3 of 11 total openings are AI-adjacent (27%)", "weight": "high", "confidence": "high"},
+      {"signal": "named_ai_ml_leadership", "status": "No public Head of AI. CTO holds combined remit.", "weight": "high", "confidence": "high"}
+    ]
+  },
+  "hiring_velocity": {
+    "open_roles_today": 11,
+    "open_roles_60_days_ago": 4,
+    "velocity_label": "doubled",
+    "signal_confidence": 0.85
+  },
+  "buying_window_signals": {
+    "funding_event": {"detected": true, "stage": "series_b", "amount_usd": 14000000},
+    "layoff_event": {"detected": false},
+    "leadership_change": {"detected": false}
+  },
+  "honesty_flags": ["tech_stack_inferred_not_confirmed"]
+}
+```
+
+### Live System Output: Atlassian (Segment 2 — Restructuring)
+
+Enriched in 36.7s against the deployed Render instance:
+- **Segment:** `segment_2_mid_market_restructure` ✅ (correctly detected layoff from layoffs.fyi)
+- **AI Maturity:** 0 (no job post or tech stack data available — honest)
+- **Honesty Flags:** `weak_hiring_velocity_signal`, `tech_stack_inferred_not_confirmed`, `weak_ai_maturity_signal`
+- **Gap Brief:** Empty (no peers in Crunchbase sample for Atlassian's sector — graceful degradation, no hallucinated competitors)
+
 ---
 
 ## 5. τ²-Bench Baseline Score and Methodology
@@ -163,11 +289,19 @@ Measured from 10 synthetic prospects × 4 interactions each (enrich, outreach, r
 
 ### Analysis
 
-- **Enrichment p50 = 10.1s** — dominated by the LLM call for AI maturity scoring and leadership detection via Playwright. Crunchbase and layoffs lookups are sub-second (local data).
+- **Enrichment p50 = 10.1s** — breakdown by stage:
+  - Crunchbase firmographics: ~0.01s (local JSON lookup)
+  - Funding signal: ~0.01s (local JSON lookup)
+  - Layoffs.fyi check: ~0.01s (local CSV lookup)
+  - Job post scrape: ~0.01s (cached JSON) to ~3s (live Playwright)
+  - Leadership detection: ~15s (Playwright scrape of press/about pages)
+  - AI maturity scoring: ~8s (LLM call via OpenRouter)
+  - Gap analysis: ~10s (LLM call via OpenRouter)
+  - Local data lookups are sub-second; LLM calls and Playwright scraping dominate.
 - **Outreach p50 = 13.0s** — LLM composition time. The p95 outlier (43.3s) was a single slow OpenRouter response; typical runs are 11–15s.
-- **Reply handling p50 = 14.5s** — two LLM calls (classify reply + generate response). Consistent latency with low variance.
+- **Reply handling p50 = 14.5s** — two sequential LLM calls: reply classification (~4s) + response generation (~10s). Consistent latency with low variance.
 - **Webhooks p50 = 0.7s** — no LLM involved, pure HTTP handling. Well within acceptable range.
-- **Overall p50 = 11.9s, p95 = 20.9s** — acceptable for email-based B2B outreach where prospects expect responses within hours, not seconds.
+- **Overall p50 = 11.9s, p95 = 20.9s** — acceptable for email-based B2B outreach where prospects expect responses within hours, not seconds. The latency bottleneck is OpenRouter/Qwen inference; switching to a faster model for non-critical calls (e.g., reply classification) would reduce p50 to ~8s.
 
 ---
 

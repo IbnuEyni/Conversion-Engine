@@ -13,12 +13,12 @@
   },
   "baseline": {
     "agent": "llm_agent",
-    "pass_at_1": 0.0,
-    "ci_95_low": 0,
-    "ci_95_high": 0.4345,
-    "passed": 0,
+    "pass_at_1": 0.2,
+    "ci_95_low": 0.0362,
+    "ci_95_high": 0.6245,
+    "passed": 1,
     "total": 5,
-    "wall_clock_s": 35.37
+    "wall_clock_s": 861.57
   },
   "mechanism": {
     "agent": "policy_aware_agent",
@@ -27,13 +27,13 @@
     "ci_95_high": 0.4345,
     "passed": 0,
     "total": 5,
-    "wall_clock_s": 37.21
+    "wall_clock_s": 32.14
   },
   "delta_a": {
-    "value": 0.0,
+    "value": -0.2,
     "p_value": 1.0,
     "significant_at_005": false,
     "test": "fisher_exact_one_sided"
   },
-  "timestamp": "2026-04-23T15:46:03.864673+00:00"
+  "timestamp": "2026-04-23T16:51:58.002707+00:00"
 }
