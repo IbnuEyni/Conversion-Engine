@@ -17,6 +17,7 @@ data/job_posts/*.json
 
 # External dependencies (cloned separately)
 tau2-bench/
+tenacious_sales_data/
 
 # Eval outputs (regenerated per run)
 eval/tau2_results/

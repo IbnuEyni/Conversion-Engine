@@ -5,11 +5,11 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from agent.models import (
-    HiringSignalBrief, Prospect, JobPostSignal, SignalStrength,
-    ConversationState,
+    HiringSignalBrief, Prospect, HiringVelocity, VelocityLabel,
+    BuyingWindowSignals, FundingEvent, LayoffEvent, LeadershipChange,
+    BenchToBriefMatch, DataSourceCheck, ConversationState,
 )
 from agent.enrichment.crunchbase import CrunchbaseEnricher
 from agent.enrichment.layoffs import LayoffsChecker
@@ -18,6 +18,7 @@ from agent.enrichment.leadership import LeadershipDetector
 from agent.enrichment.ai_maturity import score_ai_maturity
 from agent.enrichment.gap_analysis import analyze_competitor_gap
 from agent.observability.tracer import tracer
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,16 @@ class EnrichmentPipeline:
         self.job_scraper = JobPostScraper()
         self.leadership_detector = LeadershipDetector()
         self._loaded = False
+        self._bench = None
 
     def load_data(self):
         if self._loaded:
             return
         self.crunchbase.load()
         self.layoffs.load()
+        bench_path = Path(settings.seed_data_path) / "bench_summary.json"
+        if bench_path.exists():
+            self._bench = json.loads(bench_path.read_text())
         self._loaded = True
 
     def enrich(self, prospect: Prospect, skip_llm: bool = False) -> Prospect:
@@ -43,48 +48,122 @@ class EnrichmentPipeline:
         company = prospect.company_name
         logger.info(f"Enriching: {company}")
 
+        data_sources: list[DataSourceCheck] = []
+
         # 1. Firmographics
         with tracer.span("crunchbase_firmographics", prospect_id=prospect.id):
             firmographics = self.crunchbase.get_firmographics(company)
+        data_sources.append(DataSourceCheck(
+            source="crunchbase_odm",
+            status="success" if firmographics else "no_data",
+            fetched_at=datetime.utcnow().isoformat() + "Z",
+        ))
         if firmographics:
-            prospect.crunchbase_id = firmographics.get("crunchbase_id")
             prospect.industry = prospect.industry or firmographics.get("industry")
             prospect.employee_count = prospect.employee_count or firmographics.get("employee_count")
             prospect.location = prospect.location or firmographics.get("location")
             prospect.description = prospect.description or firmographics.get("description")
             prospect.website = prospect.website or firmographics.get("website")
+            prospect.domain = prospect.domain or firmographics.get("website", "").replace("https://", "").replace("http://", "").split("/")[0]
 
         # 2. Funding signal
         with tracer.span("funding_signal", prospect_id=prospect.id):
-            funding = self.crunchbase.get_funding_signal(company)
+            funding_raw = self.crunchbase.get_funding_signal(company)
+        funding_event = FundingEvent(
+            detected=funding_raw.strength.value != "absent",
+            stage=funding_raw.round_type,
+            amount_usd=int(funding_raw.amount_usd) if funding_raw.amount_usd else None,
+            closed_at=funding_raw.date,
+            source_url=funding_raw.source or None,
+        )
 
         # 3. Layoff signal
         with tracer.span("layoff_signal", prospect_id=prospect.id):
-            layoff = self.layoffs.check(company)
+            layoff_raw = self.layoffs.check(company)
+        data_sources.append(DataSourceCheck(
+            source="layoffs_fyi",
+            status="success",
+            fetched_at=datetime.utcnow().isoformat() + "Z",
+        ))
+        layoff_event = LayoffEvent(
+            detected=layoff_raw.occurred,
+            date=layoff_raw.date,
+            headcount_reduction=layoff_raw.headcount,
+            percentage_cut=layoff_raw.percentage,
+            source_url=layoff_raw.source or None,
+        )
 
         # 4. Job post signal
         with tracer.span("job_post_scrape", prospect_id=prospect.id):
             job_signal = self._get_job_signal(company, prospect.website)
+        data_sources.append(DataSourceCheck(
+            source="job_posts_snapshot",
+            status="success" if job_signal.total_open_roles > 0 else "no_data",
+            fetched_at=datetime.utcnow().isoformat() + "Z",
+        ))
+
+        # Build hiring velocity
+        velocity_label = self._compute_velocity_label(job_signal)
+        hiring_velocity = HiringVelocity(
+            open_roles_today=job_signal.total_open_roles,
+            open_roles_60_days_ago=max(0, int(job_signal.total_open_roles / (1 + (job_signal.velocity_60d or 0) / 100))) if job_signal.velocity_60d else 0,
+            velocity_label=velocity_label,
+            signal_confidence=0.7 if job_signal.total_open_roles > 0 else 0.0,
+            sources=["job_posts_snapshot"],
+        )
 
         # 5. Leadership change
         with tracer.span("leadership_detection", prospect_id=prospect.id):
             cb_record = self.crunchbase.find_company(company)
-            leadership = self.leadership_detector.detect(
+            leadership_raw = self.leadership_detector.detect(
                 company_name=company,
                 crunchbase_record=cb_record,
                 website=prospect.website or "",
             )
+        data_sources.append(DataSourceCheck(
+            source="leadership_detection",
+            status="success" if leadership_raw.new_leader else "no_data",
+            fetched_at=datetime.utcnow().isoformat() + "Z",
+        ))
+        leadership_change = LeadershipChange(
+            detected=leadership_raw.new_leader,
+            role=leadership_raw.title,
+            new_leader_name=leadership_raw.name,
+            started_at=leadership_raw.appointed_date,
+            source_url=leadership_raw.source or None,
+        )
 
-        # Build brief
+        buying_window = BuyingWindowSignals(
+            funding_event=funding_event,
+            layoff_event=layoff_event,
+            leadership_change=leadership_change,
+        )
+
+        # Bench-to-brief match
+        bench_match = self._compute_bench_match(job_signal.top_stacks)
+
+        # Honesty flags
+        honesty_flags = []
+        if job_signal.total_open_roles < 5:
+            honesty_flags.append("weak_hiring_velocity_signal")
+        if not job_signal.top_stacks:
+            honesty_flags.append("tech_stack_inferred_not_confirmed")
+        if not bench_match.bench_available and bench_match.required_stacks:
+            honesty_flags.append("bench_gap_detected")
+        if layoff_event.detected and funding_event.detected:
+            honesty_flags.append("layoff_overrides_funding")
+
+        # Build brief (without AI maturity yet)
         brief = HiringSignalBrief(
-            company_name=company,
-            crunchbase_id=prospect.crunchbase_id,
-            funding=funding,
-            job_posts=job_signal,
-            layoffs=layoff,
-            leadership=leadership,
+            prospect_domain=prospect.domain,
+            prospect_name=company,
+            generated_at=datetime.utcnow().isoformat() + "Z",
+            hiring_velocity=hiring_velocity,
+            buying_window_signals=buying_window,
             tech_stack=job_signal.top_stacks,
-            enriched_at=datetime.utcnow(),
+            bench_to_brief_match=bench_match,
+            data_sources_checked=data_sources,
+            honesty_flags=honesty_flags,
         )
 
         if not skip_llm:
@@ -100,6 +179,9 @@ class EnrichmentPipeline:
                 job_signal=job_signal,
                 tech_stack=brief.tech_stack,
             )
+            if brief.ai_maturity.confidence < 0.5:
+                honesty_flags.append("weak_ai_maturity_signal")
+                brief.honesty_flags = honesty_flags
 
             # 7. Competitor gap
             get_llm("dev").set_context("gap_analysis", prospect.id)
@@ -116,39 +198,74 @@ class EnrichmentPipeline:
         prospect.state = ConversationState.ENRICHED
         prospect.updated_at = datetime.utcnow()
 
-        # Trace the full pipeline result
         tracer.trace_outbound(
             action="enrichment_complete",
             prospect_id=prospect.id,
             channel="pipeline",
-            content_preview=f"funding={funding.strength.value}, layoff={layoff.occurred}, ai_maturity={brief.ai_maturity.score}",
+            content_preview=f"funding={funding_event.detected}, layoff={layoff_event.detected}, ai_maturity={brief.ai_maturity.score}",
             metadata={"company": company, "segment": prospect.classification.segment.value if prospect.classification else "n/a"},
         )
         tracer.flush()
 
-        logger.info(
-            f"Enriched {company}: funding={funding.strength.value}, "
-            f"layoff={layoff.occurred}, ai_maturity={brief.ai_maturity.score}"
-        )
+        logger.info(f"Enriched {company}: funding={funding_event.detected}, layoff={layoff_event.detected}, ai_maturity={brief.ai_maturity.score}")
         return prospect
 
+    def _compute_velocity_label(self, job_signal) -> VelocityLabel:
+        if not job_signal.velocity_60d:
+            return VelocityLabel.INSUFFICIENT_SIGNAL
+        v = job_signal.velocity_60d
+        if v >= 200:
+            return VelocityLabel.TRIPLED_OR_MORE
+        if v >= 100:
+            return VelocityLabel.DOUBLED
+        if v > 10:
+            return VelocityLabel.INCREASED_MODESTLY
+        if v >= -10:
+            return VelocityLabel.FLAT
+        return VelocityLabel.DECLINED
+
+    def _compute_bench_match(self, tech_stack: list[str]) -> BenchToBriefMatch:
+        if not self._bench or not tech_stack:
+            return BenchToBriefMatch()
+        bench_stacks = set(self._bench.get("stacks", {}).keys())
+        stack_lower = [s.lower().replace(" ", "_") for s in tech_stack]
+        required = []
+        gaps = []
+        for s in stack_lower:
+            for bs in bench_stacks:
+                if bs in s or s in bs:
+                    required.append(bs)
+                    break
+            else:
+                gaps.append(s)
+        return BenchToBriefMatch(
+            required_stacks=required or stack_lower,
+            bench_available=len(gaps) == 0 and len(required) > 0,
+            gaps=gaps,
+        )
+
     def _find_peers(self, prospect: Prospect) -> list[dict]:
-        """Find peer companies in same sector from Crunchbase data."""
         if not prospect.industry:
             return []
         return self.crunchbase.get_peers_by_industry(
             prospect.industry, exclude_name=prospect.company_name, limit=10
         )
 
-    def _get_job_signal(self, company: str, website: str = "") -> JobPostSignal:
-        """Scrape public career page for job post data."""
+    def _get_job_signal(self, company: str, website: str = ""):
+        from agent.models import SignalStrength
+        # Import the old-style JobPostSignal for compatibility with job_posts scraper
+        from agent.enrichment.job_posts import JobPostScraper
         if not website:
-            return JobPostSignal(strength=SignalStrength.ABSENT, source="no_website")
+            from collections import namedtuple
+            DummySignal = namedtuple("DummySignal", ["total_open_roles", "engineering_roles", "ai_ml_roles", "velocity_60d", "top_stacks", "strength", "source"])
+            return DummySignal(0, 0, 0, None, [], SignalStrength.ABSENT, "no_website")
         try:
             return self.job_scraper.scrape(company, website)
         except Exception as e:
             logger.warning(f"Job scrape failed for {company}: {e}")
-            return JobPostSignal(strength=SignalStrength.ABSENT, source=f"error: {e}")
+            from collections import namedtuple
+            DummySignal = namedtuple("DummySignal", ["total_open_roles", "engineering_roles", "ai_ml_roles", "velocity_60d", "top_stacks", "strength", "source"])
+            return DummySignal(0, 0, 0, None, [], SignalStrength.ABSENT, f"error: {e}")
 
     def save_brief(self, prospect: Prospect, output_dir: str = "data/briefs"):
         """Save hiring signal brief and gap brief as JSON."""

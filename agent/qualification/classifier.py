@@ -5,9 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from agent.models import (
-    ICPClassification, ICPSegment, Prospect, SignalStrength,
-)
+from agent.models import ICPClassification, ICPSegment, Prospect
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -18,8 +16,12 @@ ABSTENTION_THRESHOLD = 0.6
 def classify_prospect(prospect: Prospect) -> ICPClassification:
     """Rule-based ICP classification with confidence scoring.
 
-    Priority: Segment 3 > Segment 4 > Segment 1 > Segment 2
-    Hard rules enforced before scoring.
+    Priority per official ICP definition:
+    1. Layoff + funding → Segment 2
+    2. New CTO/VP Eng in 90 days → Segment 3
+    3. Specialized capability + AI maturity >= 2 → Segment 4
+    4. Fresh funding in 180 days → Segment 1
+    5. Otherwise → abstain
     """
     brief = prospect.signal_brief
     if not brief:
@@ -30,122 +32,137 @@ def classify_prospect(prospect: Prospect) -> ICPClassification:
         )
 
     scores: dict[ICPSegment, float] = {
-        ICPSegment.RECENTLY_FUNDED: 0.0,
-        ICPSegment.RESTRUCTURING: 0.0,
-        ICPSegment.LEADERSHIP_TRANSITION: 0.0,
-        ICPSegment.CAPABILITY_GAP: 0.0,
+        ICPSegment.SEGMENT_1: 0.0,
+        ICPSegment.SEGMENT_2: 0.0,
+        ICPSegment.SEGMENT_3: 0.0,
+        ICPSegment.SEGMENT_4: 0.0,
     }
     reasons: dict[ICPSegment, list[str]] = {s: [] for s in scores}
 
     emp = prospect.employee_count or 0
-    has_layoff = brief.layoffs.occurred and brief.layoffs.strength in (
-        SignalStrength.STRONG, SignalStrength.MODERATE
-    )
+    bw = brief.buying_window_signals
+    has_layoff = bw.layoff_event.detected
+    has_funding = bw.funding_event.detected
+    has_leadership = bw.leadership_change.detected
+
+    # --- Classification rule 1: Layoff + funding → Segment 2 ---
+    if has_layoff and has_funding:
+        scores[ICPSegment.SEGMENT_2] = 0.85
+        reasons[ICPSegment.SEGMENT_2].append("Layoff + funding detected — cost pressure dominates")
 
     # --- Segment 3: Leadership Transition ---
-    if brief.leadership.new_leader and brief.leadership.strength != SignalStrength.ABSENT:
-        recency = brief.leadership.recency_days or 999
-        if recency <= 90:
-            scores[ICPSegment.LEADERSHIP_TRANSITION] = 0.85
-            reasons[ICPSegment.LEADERSHIP_TRANSITION].append(
-                f"New {brief.leadership.title} appointed {recency} days ago"
+    if has_leadership:
+        role = bw.leadership_change.role or ""
+        if role in ("cto", "vp_engineering", "cio", "chief_data_officer", "head_of_ai"):
+            scores[ICPSegment.SEGMENT_3] = 0.85
+            reasons[ICPSegment.SEGMENT_3].append(
+                f"New {role} detected: {bw.leadership_change.new_leader_name or 'unknown'}"
             )
-        elif recency <= 180:
-            scores[ICPSegment.LEADERSHIP_TRANSITION] = 0.5
-            reasons[ICPSegment.LEADERSHIP_TRANSITION].append(
-                f"Leadership change {recency} days ago (outside 90-day window)"
-            )
+        else:
+            scores[ICPSegment.SEGMENT_3] = 0.5
+            reasons[ICPSegment.SEGMENT_3].append(f"Leadership change detected but role={role}")
 
-    # --- Segment 4: Capability Gap ---
+    # Disqualify Segment 3 if headcount < 50
+    if emp > 0 and emp < 50:
+        scores[ICPSegment.SEGMENT_3] = 0.0
+        reasons[ICPSegment.SEGMENT_3].append(f"BLOCKED: headcount {emp} < 50")
+
+    # --- Segment 4: Specialized Capability Gap ---
     # HARD GATE: AI maturity must be >= 2
     if brief.ai_maturity.score >= 2:
         gap_score = 0.3 * brief.ai_maturity.confidence
-        if _bench_matches_stack(brief.tech_stack):
+        if brief.bench_to_brief_match.bench_available:
             gap_score += 0.4
-            reasons[ICPSegment.CAPABILITY_GAP].append("Bench matches prospect stack")
-        if brief.job_posts.ai_ml_roles > 0:
+            reasons[ICPSegment.SEGMENT_4].append("Bench matches prospect stack")
+        if brief.hiring_velocity.open_roles_today > 0:
             gap_score += 0.2
-            reasons[ICPSegment.CAPABILITY_GAP].append(
-                f"{brief.job_posts.ai_ml_roles} AI/ML roles open"
+            reasons[ICPSegment.SEGMENT_4].append(
+                f"{brief.hiring_velocity.open_roles_today} open roles detected"
             )
-        scores[ICPSegment.CAPABILITY_GAP] = min(gap_score, 0.95)
-        reasons[ICPSegment.CAPABILITY_GAP].append(
+        scores[ICPSegment.SEGMENT_4] = min(gap_score, 0.95)
+        reasons[ICPSegment.SEGMENT_4].append(
             f"AI maturity {brief.ai_maturity.score}/3 (confidence {brief.ai_maturity.confidence:.2f})"
         )
     else:
-        reasons[ICPSegment.CAPABILITY_GAP].append(
+        reasons[ICPSegment.SEGMENT_4].append(
             f"BLOCKED: AI maturity {brief.ai_maturity.score}/3 < 2"
         )
 
     # --- Segment 1: Recently Funded ---
     # HARD RULE: post-layoff companies are NEVER Segment 1
     if has_layoff:
-        reasons[ICPSegment.RECENTLY_FUNDED].append("BLOCKED: recent layoff detected")
-    else:
-        funding = brief.funding
-        if funding.strength == SignalStrength.STRONG:
-            base = 0.7
-            if funding.round_type and "series" in funding.round_type.lower():
-                if funding.amount_usd and 5_000_000 <= funding.amount_usd <= 30_000_000:
-                    base = 0.9
-                    reasons[ICPSegment.RECENTLY_FUNDED].append(
-                        f"${funding.amount_usd/1e6:.0f}M {funding.round_type} in last 180 days"
-                    )
-            if 15 <= emp <= 80:
-                base += 0.05
-                reasons[ICPSegment.RECENTLY_FUNDED].append(f"Employee count {emp} in ICP range")
-            if brief.job_posts.strength in (SignalStrength.STRONG, SignalStrength.MODERATE):
-                base += 0.05
-                reasons[ICPSegment.RECENTLY_FUNDED].append("Active hiring signal")
-            scores[ICPSegment.RECENTLY_FUNDED] = min(base, 0.95)
-        elif funding.strength == SignalStrength.MODERATE:
-            scores[ICPSegment.RECENTLY_FUNDED] = 0.5
-            reasons[ICPSegment.RECENTLY_FUNDED].append("Recent funding but not Series A/B")
+        reasons[ICPSegment.SEGMENT_1].append("BLOCKED: recent layoff detected")
+    elif has_funding:
+        stage = bw.funding_event.stage or ""
+        amount = bw.funding_event.amount_usd or 0
+        base = 0.7
+        if stage in ("series_a", "series_b"):
+            if 5_000_000 <= amount <= 30_000_000:
+                base = 0.9
+                reasons[ICPSegment.SEGMENT_1].append(
+                    f"${amount/1e6:.0f}M {stage} detected"
+                )
+        if 15 <= emp <= 80:
+            base += 0.05
+            reasons[ICPSegment.SEGMENT_1].append(f"Employee count {emp} in ICP range")
+        if brief.hiring_velocity.open_roles_today >= 5:
+            base += 0.05
+            reasons[ICPSegment.SEGMENT_1].append(
+                f"{brief.hiring_velocity.open_roles_today} open engineering roles (>=5 required)"
+            )
+        scores[ICPSegment.SEGMENT_1] = min(base, 0.95)
 
     # --- Segment 2: Restructuring ---
-    if has_layoff:
-        base = 0.6
-        if brief.layoffs.strength == SignalStrength.STRONG:
-            base = 0.75
-            reasons[ICPSegment.RESTRUCTURING].append(
-                f"Layoff {brief.layoffs.recency_days} days ago"
-            )
-        if 200 <= emp <= 2000:
-            base += 0.1
-            reasons[ICPSegment.RESTRUCTURING].append(f"Employee count {emp} in mid-market range")
-        if brief.job_posts.strength != SignalStrength.ABSENT:
-            base += 0.1
-            reasons[ICPSegment.RESTRUCTURING].append("Still hiring — maintaining output")
-        scores[ICPSegment.RESTRUCTURING] = min(base, 0.95)
+    if has_layoff and not (has_layoff and has_funding):
+        pct = bw.layoff_event.percentage_cut or 0
+        if pct > 40:
+            reasons[ICPSegment.SEGMENT_2].append(f"BLOCKED: layoff {pct}% > 40%")
+        else:
+            base = 0.7
+            if 200 <= emp <= 2000:
+                base += 0.1
+                reasons[ICPSegment.SEGMENT_2].append(f"Employee count {emp} in mid-market range")
+            if brief.hiring_velocity.open_roles_today >= 3:
+                base += 0.1
+                reasons[ICPSegment.SEGMENT_2].append("Still hiring — maintaining output")
+            scores[ICPSegment.SEGMENT_2] = min(base, 0.95)
 
-    # Pick winner by priority (Seg3 > Seg4 > Seg1 > Seg2) with score threshold
+    # Pick winner by priority: Seg2(layoff+funding) > Seg3 > Seg4 > Seg1 > Seg2
     priority = [
-        ICPSegment.LEADERSHIP_TRANSITION,
-        ICPSegment.CAPABILITY_GAP,
-        ICPSegment.RECENTLY_FUNDED,
-        ICPSegment.RESTRUCTURING,
+        ICPSegment.SEGMENT_3,
+        ICPSegment.SEGMENT_4,
+        ICPSegment.SEGMENT_1,
+        ICPSegment.SEGMENT_2,
     ]
 
-    best_segment = ICPSegment.UNCLASSIFIED
-    best_score = 0.0
+    # Rule 1 override: layoff + funding → always Segment 2
+    if has_layoff and has_funding and scores[ICPSegment.SEGMENT_2] > 0:
+        best_segment = ICPSegment.SEGMENT_2
+        best_score = scores[ICPSegment.SEGMENT_2]
+    else:
+        best_segment = ICPSegment.UNCLASSIFIED
+        best_score = 0.0
+        for seg in priority:
+            if scores[seg] > best_score:
+                best_segment = seg
+                best_score = scores[seg]
+
     second_segment = None
-
     for seg in priority:
-        if scores[seg] > best_score:
-            second_segment = best_segment if best_score > 0 else None
-            best_segment = seg
-            best_score = scores[seg]
+        if seg != best_segment and scores[seg] > 0:
+            second_segment = seg
+            break
 
-    # Abstention: if confidence below threshold, classify as unclassified
+    # Abstention
     if best_score < ABSTENTION_THRESHOLD:
         return ICPClassification(
-            segment=ICPSegment.UNCLASSIFIED,
+            segment=ICPSegment.ABSTAIN,
             confidence=best_score,
             reasoning=f"Below confidence threshold ({best_score:.2f} < {ABSTENTION_THRESHOLD}). "
                       f"Best candidate: {best_segment.value}. "
                       + "; ".join(reasons.get(best_segment, [])),
             secondary_segment=second_segment,
-            bench_match=_bench_matches_stack(brief.tech_stack),
+            bench_match=brief.bench_to_brief_match.bench_available,
         )
 
     return ICPClassification(
@@ -153,21 +170,9 @@ def classify_prospect(prospect: Prospect) -> ICPClassification:
         confidence=best_score,
         reasoning="; ".join(reasons.get(best_segment, [])),
         secondary_segment=second_segment,
-        bench_match=_bench_matches_stack(brief.tech_stack),
+        bench_match=brief.bench_to_brief_match.bench_available,
         bench_match_detail=_get_bench_match_detail(brief.tech_stack),
     )
-
-
-def _bench_matches_stack(tech_stack: list[str]) -> bool:
-    """Check if prospect's tech stack matches Tenacious bench."""
-    bench_path = Path(settings.seed_data_path) / "bench_summary.json"
-    if not bench_path.exists():
-        return False
-    bench = json.loads(bench_path.read_text())
-    bench_stacks = set(bench.get("by_stack", {}).keys())
-    # normalize
-    stack_lower = {s.lower().replace(" ", "_") for s in tech_stack}
-    return bool(bench_stacks & stack_lower)
 
 
 def _get_bench_match_detail(tech_stack: list[str]) -> str:
@@ -176,7 +181,7 @@ def _get_bench_match_detail(tech_stack: list[str]) -> str:
         return ""
     bench = json.loads(bench_path.read_text())
     matches = []
-    for stack_name, info in bench.get("by_stack", {}).items():
+    for stack_name, info in bench.get("stacks", {}).items():
         if any(stack_name in s.lower() for s in tech_stack):
-            matches.append(f"{stack_name}: {info['available']} available")
+            matches.append(f"{stack_name}: {info['available_engineers']} available")
     return "; ".join(matches) if matches else "No direct stack match"

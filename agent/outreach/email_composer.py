@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from agent.models import Prospect, ICPSegment, SignalStrength
+from agent.models import Prospect, ICPSegment
 from agent.llm_client import get_llm
 from config.settings import settings
 
@@ -134,42 +134,44 @@ class EmailComposer:
 
     def _format_signal_brief(self, brief) -> str:
         lines = []
-        f = brief.funding
-        if f.strength != SignalStrength.ABSENT:
-            lines.append(f"Funding: {f.round_type} ${f.amount_usd/1e6:.1f}M, {f.recency_days}d ago [{f.strength.value}]")
-        j = brief.job_posts
-        if j.strength != SignalStrength.ABSENT:
-            lines.append(f"Jobs: {j.engineering_roles} eng roles, {j.ai_ml_roles} AI/ML, velocity {j.velocity_60d}% [{j.strength.value}]")
-        l = brief.layoffs
-        if l.occurred:
-            lines.append(f"Layoff: {l.headcount} people, {l.recency_days}d ago [{l.strength.value}]")
-        ld = brief.leadership
-        if ld.new_leader:
-            lines.append(f"Leadership: New {ld.title} ({ld.name}), {ld.recency_days}d ago [{ld.strength.value}]")
+        bw = brief.buying_window_signals
+        if bw.funding_event.detected:
+            lines.append(f"Funding: {bw.funding_event.stage} ${bw.funding_event.amount_usd/1e6:.1f}M, closed {bw.funding_event.closed_at}")
+        hv = brief.hiring_velocity
+        if hv.open_roles_today > 0:
+            lines.append(f"Jobs: {hv.open_roles_today} open roles today vs {hv.open_roles_60_days_ago} 60 days ago → {hv.velocity_label.value}")
+        if bw.layoff_event.detected:
+            lines.append(f"Layoff: {bw.layoff_event.headcount_reduction} people on {bw.layoff_event.date}")
+        if bw.leadership_change.detected:
+            lines.append(f"Leadership: New {bw.leadership_change.role} ({bw.leadership_change.new_leader_name}), started {bw.leadership_change.started_at}")
         ai = brief.ai_maturity
         lines.append(f"AI Maturity: {ai.score}/3 (confidence {ai.confidence:.2f})")
-        if ai.justification:
-            lines.append(f"  Justification: {'; '.join(ai.justification[:3])}")
+        if ai.justifications:
+            lines.append(f"  Justification: {'; '.join(j.status for j in ai.justifications[:3])}")
+        if brief.honesty_flags:
+            lines.append(f"Honesty flags: {', '.join(brief.honesty_flags)}")
         return "\n".join(lines) if lines else "Limited signal data"
 
     def _format_bench_info(self, brief) -> str:
         if not self._bench_summary:
             return "Bench data not loaded"
-        by_stack = self._bench_summary.get("by_stack", {})
-        lines = [f"Total available: {self._bench_summary.get('total_available', 0)}"]
-        for stack, info in by_stack.items():
-            lines.append(f"  {stack}: {info['available']} ({', '.join(f'{k}={v}' for k, v in info.get('levels', {}).items())})")
+        stacks = self._bench_summary.get("stacks", {})
+        lines = [f"Total available: {self._bench_summary.get('total_engineers_on_bench', 0)}"]
+        for stack, info in stacks.items():
+            mix = info.get('seniority_mix', {})
+            lines.append(f"  {stack}: {info['available_engineers']} ({', '.join(f'{k}={v}' for k, v in mix.items())})")
         return "\n".join(lines)
 
     def _select_case_study(self, classification) -> str:
         if not classification or not self._case_studies:
             return "No relevant case study"
         seg = classification.segment
-        # Return the section of case studies most relevant to the segment
-        if seg == ICPSegment.RECENTLY_FUNDED:
-            return "Case Study 1: Series B Fintech — 6 engineers onboarded in 3 weeks, fraud pipeline shipped in 4 months"
-        elif seg == ICPSegment.RESTRUCTURING:
-            return "Case Study 2: Mid-Market SaaS — 10 engineers, 47% cost reduction, zero velocity drop"
-        elif seg == ICPSegment.CAPABILITY_GAP:
-            return "Case Study 3: Series C AI Company — ML platform migration in 14 weeks, 62% runtime reduction"
+        if seg == ICPSegment.SEGMENT_1:
+            return 'Case Study 1: Global AdTech platform — dedicated ML team, X% margin improvement on bidding line, ongoing year 2'
+        elif seg == ICPSegment.SEGMENT_2:
+            return 'Case Study 2: North American loyalty platform — AI configuration layer took partner onboarding from months to days'
+        elif seg == ICPSegment.SEGMENT_4:
+            return 'Case Study 3: Multi-location fitness franchise — 5-phase sales-automation platform connecting 3 existing tools without migration'
+        elif seg == ICPSegment.SEGMENT_3:
+            return 'Case Study 1: Global AdTech platform — dedicated ML team embedded in client delivery structure'
         return "No segment-specific case study"

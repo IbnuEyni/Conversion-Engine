@@ -1,82 +1,81 @@
-# Tenacious Consulting & Outsourcing — Style Guide
+# Tenacious Style Guide
 
-## Voice Principles
+Five tone markers. Every outreach, every reply, every discovery-call context brief your agent produces must preserve these markers. A tone drift of more than two markers in a single message is a Tenacious brand violation and will be caught by the tone-preservation probe in Act III.
 
-1. **Direct, not aggressive.** We state what we see. We don't push.
-2. **Grounded, not generic.** Every claim references a specific signal. "You're scaling fast" is banned. "Your open Python roles tripled since February" is correct.
-3. **Peer-to-peer, not vendor-to-buyer.** We talk like an engineering leader talking to another engineering leader. No "solutions" language. No "leverage our expertise."
-4. **Honest about uncertainty.** If a signal is weak, we ask rather than assert. "It looks like you may be..." not "You are clearly..."
-5. **Respectful of time.** Emails are short. Three paragraphs max for cold outreach. One clear ask.
+---
 
-## Banned Phrases
+## The five tone markers
 
-- "Leverage our expertise"
-- "Best-in-class"
-- "Synergy" / "synergize"
-- "Touch base"
-- "Circle back"
-- "Low-hanging fruit"
-- "Move the needle"
-- "At the end of the day"
-- "Solutions provider"
-- "Offshore resources" (use "dedicated engineering team" or "your team at Tenacious")
-- "FTE replacement" (use "engineering capacity")
-- "Cheap talent" / "cost-effective resources"
+### 1. Direct
 
-## Required Tone Markers
+Clear, brief, actionable. No filler words. No vague promises. No excessive pleasantries.
 
-- **Signal reference in first paragraph.** Every cold email must reference a specific, verifiable signal about the prospect within the first two sentences.
-- **Confidence calibration.** Strong signal → declarative. Weak signal → interrogative.
-  - Strong: "You closed a $14M Series B in February and your open Python roles tripled since then."
-  - Weak: "It looks like your engineering team may be growing — are you finding recruiting capacity is keeping up?"
-- **Tenacious capacity honesty.** Never claim capacity the bench doesn't show. If bench is thin, say "we have a small number of [stack] engineers available now, with more coming off engagements in [timeframe]."
-- **One clear CTA.** Every email ends with exactly one ask. Usually: "Worth a 30-minute conversation?"
-- **No false urgency.** No "limited availability" unless bench data actually shows it. No "act now" language.
+**Subject lines state the intent.** Use "Request," "Follow-up," "Context," "Question" as the first word, not "Quick" or "Just" or "Hey."
 
-## Email Structure (Cold Outreach)
+| Bad | Good |
+|---|---|
+| "Hey there! Hope you're doing well! Just wanted to reach out about..." | "Request: 15 minutes to discuss your Q3 AI roadmap" |
+| "We can definitely help with that!" | "Yes — we have three engineers with that stack available next week." |
+| "Not sure if you'd be interested, but..." | "You mentioned scaling your data team. Here's what we'd propose." |
+
+### 2. Grounded
+
+Every claim must be grounded in the hiring signal brief or the competitor gap brief. Use confidence-aware phrasing: **ask** rather than **assert** when signal is weak.
+
+| Bad (over-claiming) | Good (grounded) |
+|---|---|
+| "You're clearly scaling aggressively." (when fewer than 5 open roles) | "You have 3 open Python roles open since January — is hiring velocity matching the runway?" |
+| "Your AI strategy is behind the curve." | "Two peer companies in your sector show public signal of dedicated MLOps teams. Wanted to ask how you're thinking about that function." |
+| "You need offshore capacity." | "Series B companies at your size often hit a recruiting-capacity wall around month four." |
+
+### 3. Honest
+
+Refuse claims that cannot be grounded in data. Never claim "aggressive hiring" if the job-post signal is weak (fewer than five open roles). Never over-commit bench capacity the `seed/bench_summary.json` does not show. Never fabricate peer-company practices to make a gap brief look sharper.
+
+**When a signal is missing, say so.** The agent may say "we don't see public signal of X" and then ask. Silence on a topic is better than a confident wrong claim.
+
+### 4. Professional
+
+Respectful. Language appropriate for founders, CTOs, and VPs of Engineering. **Avoid internal Tenacious jargon** — the word "bench" means nothing to a prospect and reads as offshore-vendor language. Use "engineering team," "available capacity," or "engineers ready to deploy."
+
+**Never use offshore-vendor clichés**: "top talent," "world-class," "A-players," "rockstar," "ninja," "cost savings of X%" without substantiation. These trigger skepticism in senior engineering leaders.
+
+### 5. Non-condescending
+
+When using the competitor gap brief, frame the gap as a **research finding** or a **question worth asking**, never as a failure of the prospect's leadership. Senior engineering leaders know their own gaps — they do not need a cold email to tell them. The value is in the specificity of what the peer companies are doing, not the implication that the prospect is behind.
+
+| Bad (condescending) | Good (research framing) |
+|---|---|
+| "You're missing a critical AI capability that your competitors have." | "Three of your peers have posted AI-platform-engineer roles in the last 90 days. Curious whether you've made a deliberate choice not to, or whether it's still being scoped." |
+| "Your team clearly can't handle this in-house." | "The typical bottleneck for teams at your stage is recruiting, not capability." |
+
+---
+
+## Formatting constraints
+
+- **Max 120 words** in the body of a cold outreach email. Longer = lower reply rate per Clay and Smartlead case-study data.
+- **One clear ask per message.** Never stack "and also would love to discuss X, Y, Z."
+- **Subject line under 60 characters.** Gmail truncates above this on mobile.
+- **No emojis in cold outreach.** Emojis are permitted in warm replies after the prospect has set the tone.
+- **No marketing taglines in signatures.** The signature is name, title, Tenacious, one link. Nothing else.
+
+## Signature template
 
 ```
-Subject: [Signal-grounded, specific, no clickbait]
-
-[1-2 sentences: What we noticed about their company — grounded in signal data]
-
-[1-2 sentences: What companies in their position typically face — the pattern]
-
-[1 sentence: What Tenacious does, matched to their specific situation]
-
-[1 sentence: The ask — usually a 30-minute call]
-
-[Signature]
+[First name]
+[Title, e.g., Research Partner]
+Tenacious Intelligence Corporation
+gettenacious.com
 ```
 
-## Email Structure (Follow-up)
+## Re-engagement tone
 
-```
-[1 sentence: Reference the previous email or their reply]
+Re-engagement emails (to stalled threads after 2+ weeks of silence) must not guilt-trip. Do not say "following up again" or "circling back." Instead, offer a new piece of information — a new competitor signal, a new industry data point, a specific question — and let the new content carry the message.
 
-[1-2 sentences: Additional value — new signal, relevant case study outcome, or competitor gap insight]
+## The tone-preservation check
 
-[1 sentence: The ask — reiterate or adjust based on their response]
-```
+Your agent's tone-preservation check (a design direction suggested in Act IV) should score every draft against the five markers above. A draft that scores below 4/5 on any marker should be regenerated or flagged for human review. Document the scoring rubric in `method.md` if you build this mechanism.
 
-## SMS Style (Warm Leads Only)
+## How to test your outputs
 
-- SMS is ONLY for leads who have already replied to email
-- Keep under 160 characters when possible
-- Casual but professional: "Hi [Name], following up on our email thread. Would Thursday 2pm ET work for a quick call?"
-- Always include timezone
-- Respect STOP immediately
-
-## Competitor Gap Brief Tone
-
-- NEVER condescending. A CTO who is behind knows they're behind.
-- Frame as "what the top quartile is doing" not "what you're missing"
-- Present as research finding, not judgment
-- "Three companies in your sector at your stage show public signal for [practice]. We don't see that signal from you yet — is that a deliberate choice or a gap worth discussing?"
-
-## Numbers and Claims
-
-- Always cite the source of any number
-- Tenacious pricing: quote public bands only, route deeper pricing to human
-- Case study outcomes: quote only from provided case studies, never fabricate
-- Bench availability: reference bench_summary.json, never hallucinate capacity
+Before sending a draft through Resend, ask: **would this email read well if it were quoted in a screenshot on LinkedIn with the prospect's annotation?** If the honest answer is "the prospect would roast us," rewrite. Tenacious-brand risk from a single viral roast of a bad outreach outweighs a week of reply-rate gains.

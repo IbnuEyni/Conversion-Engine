@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import json
-from agent.models import AIMaturityScore, JobPostSignal, SignalStrength
+from agent.models import AIMaturityScore, AIMaturityJustification, SignalStrength
 from agent.llm_client import get_llm
 
 SCORING_PROMPT = """You are an AI maturity analyst. Score a company's AI maturity from 0-3 based on public signals.
@@ -45,12 +45,12 @@ def score_ai_maturity(
     industry: str = "",
     description: str = "",
     employee_count: int = 0,
-    job_signal: JobPostSignal | None = None,
+    job_signal=None,
     tech_stack: list[str] | None = None,
     additional_context: str = "",
 ) -> AIMaturityScore:
     job_data = "No job post data available"
-    if job_signal and job_signal.strength != SignalStrength.ABSENT:
+    if job_signal and getattr(job_signal, 'strength', SignalStrength.ABSENT) != SignalStrength.ABSENT:
         job_data = (
             f"Total open roles: {job_signal.total_open_roles}, "
             f"Engineering roles: {job_signal.engineering_roles}, "
@@ -76,9 +76,22 @@ def score_ai_maturity(
     ], max_tokens=1024)
 
     parsed = result["parsed"]
+    justifications = []
+    for j in parsed.get("justification", []):
+        if isinstance(j, str):
+            justifications.append(AIMaturityJustification(
+                signal="general", status=j, weight="medium", confidence="medium"
+            ))
+        elif isinstance(j, dict):
+            justifications.append(AIMaturityJustification(**j))
+    # Also parse signal_inputs into justifications if present
+    for signal_name, value in parsed.get("signal_inputs", {}).items():
+        if not any(jj.signal == signal_name for jj in justifications):
+            justifications.append(AIMaturityJustification(
+                signal=signal_name, status=str(value), weight="medium", confidence="medium"
+            ))
     return AIMaturityScore(
         score=max(0, min(3, int(parsed.get("score", 0)))),
         confidence=max(0.0, min(1.0, float(parsed.get("confidence", 0.0)))),
-        justification=parsed.get("justification", []),
-        signal_inputs=parsed.get("signal_inputs", {}),
+        justifications=justifications,
     )
