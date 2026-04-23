@@ -103,7 +103,10 @@ def enrich_prospect(inp: ProspectInput):
     enrichment.save_brief(prospect)
 
     # Sync to HubSpot
-    hubspot_result = crm.sync_prospect(prospect)
+    try:
+        hubspot_result = crm.sync_prospect(prospect)
+    except Exception as e:
+        hubspot_result = {"status": "error", "error": str(e)}
 
     return {
         "prospect_id": pid,
@@ -113,6 +116,8 @@ def enrich_prospect(inp: ProspectInput):
         "ai_maturity": prospect.signal_brief.ai_maturity.score if prospect.signal_brief else None,
         "bench_match": prospect.classification.bench_match,
         "state": prospect.state.value,
+        "honesty_flags": prospect.signal_brief.honesty_flags if prospect.signal_brief else [],
+        "hiring_velocity": prospect.signal_brief.hiring_velocity.velocity_label.value if prospect.signal_brief else None,
         "hubspot": hubspot_result,
     }
 

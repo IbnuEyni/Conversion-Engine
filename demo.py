@@ -67,7 +67,10 @@ class ConversionEngineDemo:
             print(f"📊 Confidence: {enrichment_result['confidence']:.2f}")
             print(f"🤖 AI Maturity Score: {enrichment_result.get('ai_maturity', 'N/A')}")
             print(f"📈 Bench Match: {enrichment_result.get('bench_match', 'N/A')}")
-            print(f"🏢 HubSpot Sync: {enrichment_result['hubspot']['status']}")
+            print(f"📊 Hiring Velocity: {enrichment_result.get('hiring_velocity', 'N/A')}")
+            print(f"⚠️  Honesty Flags: {enrichment_result.get('honesty_flags', [])}")
+            hubspot = enrichment_result.get('hubspot', {})
+            print(f"🏢 HubSpot Sync: {hubspot.get('status', 'N/A') if isinstance(hubspot, dict) else hubspot}")
             print()
             
         except Exception as e:
