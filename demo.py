@@ -89,7 +89,25 @@ class ConversionEngineDemo:
             
         try:
             response = await self.client.post(f"{BASE_URL}/prospects/{self.prospect_id}/outreach")
+            if response.status_code == 400:
+                err = response.json()
+                print(f"⚠️  State conflict: {err.get('detail', 'unknown')}")
+                print("   Resetting: creating a fresh prospect for outreach...")
+                # Create a fresh prospect just for outreach
+                fresh = await self.client.post(f"{BASE_URL}/prospects/enrich", json={
+                    "company_name": "OutreachTest Corp",
+                    "contact_name": "Alex Demo",
+                    "contact_email": "alex@outreachtest.com",
+                    "contact_title": "VP Engineering",
+                })
+                fresh_data = fresh.json()
+                fresh_id = fresh_data["prospect_id"]
+                response = await self.client.post(f"{BASE_URL}/prospects/{fresh_id}/outreach")
+            
             outreach_result = response.json()
+            if response.status_code >= 400:
+                print(f"❌ Outreach error: {outreach_result.get('detail', outreach_result)}")
+                return False
             
             print(f"✅ Email Status: {outreach_result['status']}")
             print(f"📬 Subject: {outreach_result['email_subject']}")
@@ -124,6 +142,10 @@ class ConversionEngineDemo:
         try:
             response = await self.client.post(f"{BASE_URL}/prospects/{self.prospect_id}/reply", json=reply_data)
             conversation_result = response.json()
+            
+            if response.status_code >= 400:
+                print(f"❌ Reply error: {conversation_result.get('detail', conversation_result)}")
+                return False
             
             print(f"✅ Reply processed successfully")
             print(f"🤖 Agent Response: '{conversation_result['reply'][:100]}...'")
@@ -171,6 +193,8 @@ class ConversionEngineDemo:
         print("🔗 DEMO 6: Webhook Endpoints")
         print("=" * 50)
         
+        all_ok = True
+
         # Test email webhook
         email_webhook_data = {
             "type": "email.delivered",
@@ -186,6 +210,7 @@ class ConversionEngineDemo:
             print(f"✅ Email Webhook: {response.status_code} - {response.json()}")
         except Exception as e:
             print(f"❌ Email webhook test failed: {e}")
+            all_ok = False
         
         # Test SMS webhook
         sms_webhook_data = {
@@ -199,8 +224,10 @@ class ConversionEngineDemo:
             print(f"✅ SMS Webhook: {response.status_code} - {response.json()}")
         except Exception as e:
             print(f"❌ SMS webhook test failed: {e}")
+            all_ok = False
         
         print()
+        return all_ok
 
     async def demo_prospects_list(self):
         """Test 7: List All Prospects"""
@@ -235,9 +262,9 @@ class ConversionEngineDemo:
             ("Health Check", self.demo_health_check),
             ("Prospect Enrichment", self.demo_enrichment),
             ("Automated Outreach", self.demo_outreach),
+            ("Webhook Endpoints", self.demo_webhook_endpoints),
             ("Conversation Management", self.demo_conversation),
             ("Prospect Profile", self.demo_prospect_details),
-            ("Webhook Endpoints", self.demo_webhook_endpoints),
             ("Prospects List", self.demo_prospects_list),
         ]
         
