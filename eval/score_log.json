@@ -20,5 +20,27 @@
       3,
       4
     ]
+  },
+  {
+    "timestamp": "2026-04-23T12:11:50.998129+00:00",
+    "label": "dev_quick",
+    "model": "openrouter/qwen/qwen3-235b-a22b",
+    "domain": "retail",
+    "n_tasks": 5,
+    "n_trials": 1,
+    "total_simulations": 5,
+    "passed": 2,
+    "pass_at_1": 0.4,
+    "ci_95_low": 0.1176,
+    "ci_95_high": 0.7693,
+    "wall_clock_s": 706.73,
+    "results_file": "/home/shuaib/Desktop/python/10Acd/10Acweek10/eval/tau2_results/dev_quick_20260423_120004.jsonl",
+    "task_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
   }
 ]
