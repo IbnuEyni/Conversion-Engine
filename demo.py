@@ -128,6 +128,7 @@ class ConversionEngineDemo:
             print(f"✅ Reply processed successfully")
             print(f"🤖 Agent Response: '{conversation_result['reply'][:100]}...'")
             print(f"📊 New State: {conversation_result['state']}")
+            print(f"🏷️  Reply Class: {conversation_result.get('reply_class', 'N/A')}")
             print(f"📞 Should Book Call: {conversation_result['should_book_call']}")
             print(f"👤 Needs Human Handoff: {conversation_result['needs_human_handoff']}")
             print()

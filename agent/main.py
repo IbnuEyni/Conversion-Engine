@@ -131,7 +131,12 @@ def send_outreach(prospect_id: str):
     if prospect.state not in (ConversationState.ENRICHED, ConversationState.NEW):
         raise HTTPException(400, f"Prospect in state {prospect.state.value}, cannot send outreach")
 
-    email = composer.compose(prospect)
+    try:
+        email = composer.compose(prospect)
+    except Exception as e:
+        logger.error(f"Email compose failed for {prospect_id}: {e}")
+        raise HTTPException(500, f"Email composition failed: {e}")
+
     result = sender.send(
         to_email=prospect.contact_email or f"synthetic+{prospect_id}@sink.local",
         subject=email["subject"],
@@ -145,9 +150,11 @@ def send_outreach(prospect_id: str):
     prospect.last_contact = datetime.utcnow()
     conversations.add_message(prospect_id, "agent", email["body"], "email")
 
-    # Log outreach to HubSpot
-    crm.log_event(prospect, "outreach_email", f"Subject: {email['subject']}\n\n{email['body']}")
-    crm.upsert_contact(prospect)  # update state + emails_sent
+    try:
+        crm.log_event(prospect, "outreach_email", f"Subject: {email['subject']}\n\n{email['body']}")
+        crm.upsert_contact(prospect)
+    except Exception as e:
+        logger.warning(f"HubSpot log failed: {e}")
 
     return {
         "prospect_id": prospect_id,
@@ -166,9 +173,12 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
     if not prospect:
         raise HTTPException(404, "Prospect not found")
 
-    result = conversations.handle_reply(prospect, inp.message)
+    try:
+        result = conversations.handle_reply(prospect, inp.message)
+    except Exception as e:
+        logger.error(f"Reply handling failed for {prospect_id}: {e}")
+        raise HTTPException(500, f"Reply handling failed: {e}")
 
-    # Update state
     state_map = {
         "engaged": ConversationState.ENGAGED,
         "qualified": ConversationState.QUALIFIED,
@@ -180,31 +190,34 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
     prospect.state = new_state
     prospect.updated_at = datetime.utcnow()
 
-    # Log to HubSpot
-    crm.log_event(prospect, "reply_handled", f"Prospect said: {inp.message}\n\nAgent replied: {result['reply_text']}")
-    crm.upsert_contact(prospect)
-    if new_state == ConversationState.QUALIFIED:
-        crm.create_deal(prospect)
+    try:
+        crm.log_event(prospect, "reply_handled", f"Prospect said: {inp.message}\n\nAgent replied: {result['reply_text']}")
+        crm.upsert_contact(prospect)
+        if new_state == ConversationState.QUALIFIED:
+            crm.create_deal(prospect)
+    except Exception as e:
+        logger.warning(f"HubSpot log failed: {e}")
 
-    # Send reply
-    if prospect.channel == Channel.EMAIL:
-        sender.send(
-            to_email=prospect.contact_email or f"synthetic+{prospect_id}@sink.local",
-            subject=f"Re: {prospect.company_name}",
-            body=result["reply_text"],
-            prospect_id=prospect_id,
-        )
-    elif prospect.channel == Channel.SMS:
-        sms.send(
-            to_phone=prospect.contact_phone or "+1234567890",
-            message=result["reply_text"][:160],
-            prospect_id=prospect_id,
-        )
+    if result.get("reply_text"):
+        if prospect.channel == Channel.EMAIL:
+            sender.send(
+                to_email=prospect.contact_email or f"synthetic+{prospect_id}@sink.local",
+                subject=f"Re: {prospect.company_name}",
+                body=result["reply_text"],
+                prospect_id=prospect_id,
+            )
+        elif prospect.channel == Channel.SMS:
+            sms.send(
+                to_phone=prospect.contact_phone or "+1234567890",
+                message=result["reply_text"][:160],
+                prospect_id=prospect_id,
+            )
 
     return {
         "prospect_id": prospect_id,
         "reply": result["reply_text"],
         "state": new_state.value,
+        "reply_class": result.get("reply_class", "unknown"),
         "should_book_call": result["should_book_call"],
         "needs_human_handoff": result["needs_human_handoff"],
     }
