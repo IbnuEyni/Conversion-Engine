@@ -89,11 +89,13 @@ class EmailComposer:
 
         # Build gap brief summary
         gap_summary = "No competitor gap data available"
-        if gap and gap.specific_gaps:
+        if gap and gap.gap_findings:
+            findings = [f.practice for f in gap.gap_findings[:3]]
             gap_summary = (
-                f"Position: {gap.prospect_position}\n"
-                f"Top quartile practices: {', '.join(gap.top_quartile_practices)}\n"
-                f"Specific gaps: {', '.join(gap.specific_gaps)}"
+                f"Sector: {gap.prospect_sector}\n"
+                f"AI Maturity vs Top Quartile: {gap.prospect_ai_maturity_score}/3 vs {gap.sector_top_quartile_benchmark}\n"
+                f"Gap findings: {'; '.join(findings)}\n"
+                f"Pitch shift: {gap.suggested_pitch_shift}"
             )
 
         # Build bench info
