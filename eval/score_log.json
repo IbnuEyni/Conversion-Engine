@@ -1,5 +1,24 @@
 [
   {
+    "timestamp": "2026-04-23T00:00:00+00:00",
+    "label": "official_baseline",
+    "model": "openrouter/qwen/qwen3-235b-a22b",
+    "domain": "retail",
+    "n_tasks": 30,
+    "n_trials": 5,
+    "total_simulations": 150,
+    "passed": 109,
+    "pass_at_1": 0.7267,
+    "ci_95_low": 0.6504,
+    "ci_95_high": 0.7917,
+    "avg_agent_cost": 0.0199,
+    "p50_latency_s": 105.9521,
+    "p95_latency_s": 551.6491,
+    "infra_errors": 0,
+    "git_commit": "d11a97072c49d093f7b5a3e4fe9da95b490d43ba",
+    "source": "instructor_provided"
+  },
+  {
     "timestamp": "2026-04-21T21:52:04.738970+00:00",
     "label": "dev_quick",
     "model": "openrouter/qwen/qwen3-235b-a22b",
@@ -12,14 +31,8 @@
     "ci_95_low": 0.0362,
     "ci_95_high": 0.6245,
     "wall_clock_s": 688.07,
-    "results_file": "/home/shuaib/Desktop/python/10Acd/10Acweek10/eval/tau2_results/dev_quick_20260421_214036.jsonl",
-    "task_ids": [
-      0,
-      1,
-      2,
-      3,
-      4
-    ]
+    "results_file": "eval/tau2_results/dev_quick_20260421_214036.jsonl",
+    "task_ids": [0, 1, 2, 3, 4]
   },
   {
     "timestamp": "2026-04-23T12:11:50.998129+00:00",
@@ -34,13 +47,23 @@
     "ci_95_low": 0.1176,
     "ci_95_high": 0.7693,
     "wall_clock_s": 706.73,
-    "results_file": "/home/shuaib/Desktop/python/10Acd/10Acweek10/eval/tau2_results/dev_quick_20260423_120004.jsonl",
-    "task_ids": [
-      0,
-      1,
-      2,
-      3,
-      4
-    ]
+    "results_file": "eval/tau2_results/dev_quick_20260423_120004.jsonl",
+    "task_ids": [0, 1, 2, 3, 4]
+  },
+  {
+    "timestamp": "2026-04-23T12:39:09.125718+00:00",
+    "label": "dev_quick",
+    "model": "openrouter/qwen/qwen3-235b-a22b",
+    "domain": "retail",
+    "n_tasks": 5,
+    "n_trials": 1,
+    "total_simulations": 5,
+    "passed": 1,
+    "pass_at_1": 0.2,
+    "ci_95_low": 0.0362,
+    "ci_95_high": 0.6245,
+    "wall_clock_s": 709.71,
+    "results_file": "eval/tau2_results/dev_quick_20260423_122719.jsonl",
+    "task_ids": [0, 1, 2, 3, 4]
   }
 ]

@@ -1,0 +1,39 @@
+{
+  "comparison": {
+    "task_ids": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "num_trials": 1,
+    "model": "openrouter/qwen/qwen3-235b-a22b",
+    "domain": "retail"
+  },
+  "baseline": {
+    "agent": "llm_agent",
+    "pass_at_1": 0.0,
+    "ci_95_low": 0,
+    "ci_95_high": 0.4345,
+    "passed": 0,
+    "total": 5,
+    "wall_clock_s": 35.37
+  },
+  "mechanism": {
+    "agent": "policy_aware_agent",
+    "pass_at_1": 0.0,
+    "ci_95_low": 0,
+    "ci_95_high": 0.4345,
+    "passed": 0,
+    "total": 5,
+    "wall_clock_s": 37.21
+  },
+  "delta_a": {
+    "value": 0.0,
+    "p_value": 1.0,
+    "significant_at_005": false,
+    "test": "fisher_exact_one_sided"
+  },
+  "timestamp": "2026-04-23T15:46:03.864673+00:00"
+}

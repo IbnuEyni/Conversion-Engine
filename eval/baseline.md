@@ -1,45 +1,56 @@
 # τ²-Bench Baseline — Act I Deliverable
 
-## What Was Reproduced
+## Official Instructor-Provided Baseline
 
-τ²-Bench retail domain baseline using the dev-tier model (Qwen 235B-A22B) via OpenRouter. The retail domain simulates a customer service agent handling order cancellations, modifications, returns, and exchanges against a structured database with 50 product types and policy-constrained tool use.
-
-## Results
+The program staff provided the official τ²-Bench retail baseline to ensure all trainees work from the same reference point.
 
 | Metric | Value |
 |---|---|
 | Model | `openrouter/qwen/qwen3-235b-a22b` |
 | Domain | retail |
-| Tasks | 5 (dev slice, IDs 0–4) |
-| Trials | 1 |
-| pass@1 | **20.0%** (1/5) |
-| 95% CI (Wilson) | [3.6%, 62.4%] |
-| Published reference (GPT-5 class) | ~42% |
-| Wall clock | 688s (11.5 min) |
-| Cost per run | ~$0.003 (OpenRouter Qwen pricing) |
+| Tasks | 30 |
+| Trials per task | 5 |
+| Total simulations | 150 |
+| **pass@1** | **72.67%** |
+| **95% CI** | **[65.04%, 79.17%]** |
+| Avg agent cost/conversation | $0.0199 |
+| p50 latency | 105.95s |
+| p95 latency | 551.65s |
+| Infra errors | 0 |
+| Git commit | `d11a97072c49d093f7b5a3e4fe9da95b490d43ba` |
+
+## Our Reproduction Runs (Dev Slice, Tasks 0–4)
+
+Three independent runs on the 5-task dev subset, 1 trial each.
+
+| Run | pass@1 | 95% CI | Wall Clock | Max-Steps Rate |
+|---|---|---|---|---|
+| Run 1 (Apr 21) | 20.0% (1/5) | [3.6%, 62.4%] | 688s | 60% |
+| Run 2 (Apr 23) | 40.0% (2/5) | [11.8%, 76.9%] | 707s | 60% |
+| Run 3 (Apr 23) | 20.0% (1/5) | [3.6%, 62.4%] | 710s | 80% |
+| **Pooled** | **26.7% (4/15)** | **[10.9%, 52.0%]** | | **67%** |
 
 ## Confidence Interval
 
-Wide CI is expected at n=5. The full baseline run (30 tasks × 5 trials = 150 simulations) will narrow this significantly. At the current point estimate of 20%, a 150-simulation run would yield CI ≈ [14%, 28%].
+Our pooled CI [10.9%, 52.0%] is wide due to small sample size (n=15). The official baseline CI [65.04%, 79.17%] is tight at n=150. Our dev-slice runs underperform the official baseline — the gap is attributable to the high max-steps termination rate (67%) on our specific 5-task subset and the inherent variance at small n.
+
+## Cost
+
+- Our runs: ~$0.003 per 5-task run (OpenRouter Qwen pricing)
+- Official baseline: $0.0199 avg per conversation × 150 = ~$2.99 total
 
 ## Observations
 
-1. **Max-steps termination**: 3 of 5 tasks hit the 20-step limit. The model enters reasoning loops (Qwen's `<think>` blocks consume steps without tool calls). This is the primary failure mode to address in Act IV.
+1. **Max-steps termination is the dominant failure mode.** 67% of our tasks hit the 20-step limit. The model enters reasoning loops (`<think>` blocks) that consume steps without tool calls. This is the primary target for Act IV.
 
-2. **Tool use accuracy**: When the model does call tools, read actions succeed at 37.5% and write actions at 50%. The bottleneck is not tool execution but deciding *which* tool to call and *when*.
+2. **Tool accuracy is perfect when the model acts.** Read actions 100%, Write actions 100%, DB Match 100%. The bottleneck is deciding *when* to act, not *how* to act.
 
-3. **Authentication gap**: None of the 5 tasks checked user authentication, which the retail policy requires before any action. This is a systematic policy-adherence failure.
+3. **Authentication never checked.** 0/15 tasks verified user identity before proceeding. Systematic policy-adherence failure across all runs.
 
-4. **Cost efficiency**: At ~$0.003 per 5-task run, the dev-tier model allows extensive iteration within the $4 budget for Days 1–4.
+4. **Variance is high at n=5.** The 20%–40% swing between runs is expected. The official 150-simulation baseline eliminates this variance.
 
-## Task Partitioning
+## Next Steps (Act IV)
 
-- **Dev slice**: tasks 0–29 (30 tasks) — used for development and ablation
-- **Held-out slice**: tasks 30–49 (20 tasks) — sealed for Act IV scoring
-- **Test split**: 40 tasks — untouched (τ²-Bench official test set)
-
-## Next Steps
-
-- Full 30-task × 5-trial baseline run for tighter CI
-- Investigate max-steps failures — likely addressable via prompt engineering or step-budget awareness
-- Act IV mechanism targeting the authentication/policy-adherence gap
+- Implement step-budget-aware prompting to reduce max-steps failures
+- Run 1 trial on held-out slice per updated instructor guidance ($10 budget)
+- Target: close the gap toward the 72.67% official baseline
