@@ -89,12 +89,47 @@ class BookingEngine:
             booking["error"] = str(e)
             logger.error(f"Cal.com booking failed: {e}")
         self._log(booking)
+        self._sync_booking_to_hubspot(booking)
         return booking
+
+    def _sync_booking_to_hubspot(self, booking: dict):
+        """Sync booking event to HubSpot — update contact and log engagement."""
+        try:
+            from agent.crm.hubspot import HubSpotCRM
+            from agent.models import Prospect, ConversationState
+
+            crm = HubSpotCRM()
+            prospect_id = booking.get("prospect_id", "")
+            if not prospect_id:
+                return
+
+            # Build a minimal prospect for HubSpot update
+            prospect = Prospect(
+                id=prospect_id,
+                company_name=booking.get("prospect_name", ""),
+                contact_email=booking.get("prospect_email", ""),
+                contact_name=booking.get("prospect_name", ""),
+                state=ConversationState.CALL_BOOKED,
+                calcom_booking_id=booking.get("calcom_booking_id", ""),
+            )
+
+            crm.upsert_contact(prospect)
+            crm.log_event(
+                prospect,
+                "call_booked",
+                f"Discovery call booked at {booking.get('slot_time', 'TBD')}\n"
+                f"Cal.com ID: {booking.get('calcom_booking_id', 'N/A')}\n"
+                f"Status: {booking.get('status', 'unknown')}",
+            )
+            logger.info(f"Booking synced to HubSpot for {prospect_id}")
+        except Exception as e:
+            logger.warning(f"Booking HubSpot sync failed: {e}")
 
     def _book_to_sink(self, booking: dict) -> dict:
         booking["status"] = "sink"
         booking["calcom_booking_id"] = f"mock_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         self._log(booking)
+        self._sync_booking_to_hubspot(booking)
         logger.info(f"Booking routed to sink: {booking['prospect_name']} at {booking['slot_time']}")
         return booking
 

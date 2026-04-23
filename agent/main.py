@@ -99,6 +99,12 @@ def enrich_prospect(inp: ProspectInput):
 
     prospect = enrichment.enrich(prospect)
     prospect.classification = classify_prospect(prospect)
+
+    # Backfill segment into the signal brief per schema requirement
+    if prospect.signal_brief and prospect.classification:
+        prospect.signal_brief.primary_segment_match = prospect.classification.segment.value
+        prospect.signal_brief.segment_confidence = prospect.classification.confidence
+
     prospects[pid] = prospect
     enrichment.save_brief(prospect)
 
@@ -207,10 +213,15 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
                 prospect_id=prospect_id,
             )
         elif prospect.channel == Channel.SMS:
+            is_warm = prospect.state in (
+                ConversationState.ENGAGED, ConversationState.QUALIFIED,
+                ConversationState.CALL_BOOKED, ConversationState.HANDED_OFF,
+            )
             sms.send(
                 to_phone=prospect.contact_phone or "+1234567890",
                 message=result["reply_text"][:160],
                 prospect_id=prospect_id,
+                is_warm_lead=is_warm,
             )
 
     return {
@@ -228,6 +239,72 @@ async def email_reply_webhook(request: Request):
     """Webhook for inbound email replies (Resend)."""
     body = await request.json()
     logger.info(f"Email webhook received: {json.dumps(body)[:200]}")
+
+    event_type = body.get("type", "")
+
+    # Handle delivery failure events
+    if event_type in ("email.bounced", "email.complained"):
+        email_to = body.get("data", {}).get("to", [""])
+        if isinstance(email_to, list):
+            email_to = email_to[0] if email_to else ""
+        logger.warning(f"Email delivery failure ({event_type}): {email_to}")
+        # Find prospect by email and mark as failed
+        for p in prospects.values():
+            if p.contact_email == email_to:
+                p.state = ConversationState.STALLED
+                try:
+                    crm.upsert_contact(p)
+                except Exception:
+                    pass
+                break
+        return {"status": "failure_logged", "event": event_type}
+
+    # Handle inbound reply
+    reply_text = body.get("data", {}).get("text", "") or body.get("text", "") or body.get("message", "")
+    from_email = body.get("data", {}).get("from", "") or body.get("from", "")
+
+    if reply_text and from_email:
+        # Find prospect by email
+        matched_prospect = None
+        for p in prospects.values():
+            if p.contact_email and p.contact_email.lower() == from_email.lower():
+                matched_prospect = p
+                break
+
+        if matched_prospect:
+            try:
+                result = conversations.handle_reply(matched_prospect, reply_text)
+                state_map = {
+                    "engaged": ConversationState.ENGAGED,
+                    "qualified": ConversationState.QUALIFIED,
+                    "call_booked": ConversationState.CALL_BOOKED,
+                    "stalled": ConversationState.STALLED,
+                    "opted_out": ConversationState.OPTED_OUT,
+                }
+                matched_prospect.state = state_map.get(result["next_state"], ConversationState.ENGAGED)
+                matched_prospect.updated_at = datetime.utcnow()
+
+                # Send agent reply
+                if result.get("reply_text"):
+                    sender.send(
+                        to_email=matched_prospect.contact_email,
+                        subject=f"Re: {matched_prospect.company_name}",
+                        body=result["reply_text"],
+                        prospect_id=matched_prospect.id,
+                    )
+
+                try:
+                    crm.log_event(matched_prospect, "webhook_reply", f"Prospect: {reply_text}\nAgent: {result['reply_text']}")
+                    crm.upsert_contact(matched_prospect)
+                except Exception:
+                    pass
+
+                logger.info(f"Webhook reply processed for {matched_prospect.company_name}: state={matched_prospect.state.value}")
+                return {"status": "reply_processed", "prospect_id": matched_prospect.id, "state": matched_prospect.state.value}
+            except Exception as e:
+                logger.error(f"Webhook reply handling failed: {e}")
+                return {"status": "error", "detail": str(e)}
+
     return {"status": "received"}
 
 

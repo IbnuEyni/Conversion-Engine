@@ -24,7 +24,19 @@ class SMSHandler:
             self._at_client = africastalking.SMS
         return self._at_client
 
-    def send(self, to_phone: str, message: str, prospect_id: str = "") -> dict:
+    def send(self, to_phone: str, message: str, prospect_id: str = "", is_warm_lead: bool = False) -> dict:
+        """Send SMS. Only warm leads (replied by email at least once) may receive SMS."""
+        if not is_warm_lead:
+            logger.warning(f"SMS blocked for {to_phone}: not a warm lead. SMS is reserved for prospects who have replied by email.")
+            return {
+                "to": to_phone,
+                "message": message,
+                "prospect_id": prospect_id,
+                "status": "blocked_cold_lead",
+                "reason": "SMS only permitted for warm leads who have replied by email",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
         record = {
             "to": to_phone,
             "message": message,

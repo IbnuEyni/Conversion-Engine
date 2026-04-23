@@ -124,14 +124,13 @@ class HubSpotCRM:
             "phone": prospect.contact_phone or "not_provided",
             "website": prospect.website or "unknown",
             "city": (prospect.location or "Unknown").split(",")[0].strip(),
-            # Custom properties (these need to be created in HubSpot first)
-            "crunchbase_id": prospect.crunchbase_id or "not_found",
             "icp_segment": classification.segment.value if classification else "unclassified",
             "icp_confidence": str(round(classification.confidence, 2)) if classification else "0",
             "conversation_state": prospect.state.value,
             "ai_maturity_score": str(brief.ai_maturity.score) if brief else "0",
-            "enrichment_timestamp": brief.enriched_at.isoformat() if brief else datetime.utcnow().isoformat(),
+            "enrichment_timestamp": brief.generated_at if brief else datetime.utcnow().isoformat(),
             "emails_sent": str(prospect.emails_sent),
+            "calcom_booking_id": prospect.calcom_booking_id or "none",
             "is_synthetic": "true",
             "draft": "true",
         }
@@ -189,29 +188,47 @@ class HubSpotCRM:
         brief = prospect.signal_brief
         gap = prospect.gap_brief
 
-        return {
+        props = {
             "name": prospect.company_name,
-            "domain": (prospect.website or "").replace("https://", "").replace("http://", "").split("/")[0] or "unknown",
+            "domain": prospect.domain or (prospect.website or "").replace("https://", "").replace("http://", "").split("/")[0] or "unknown",
             "industry": self._map_industry(prospect.industry),
             "numberofemployees": str(prospect.employee_count or 0),
             "city": (prospect.location or "Unknown").split(",")[0].strip(),
             "description": prospect.description or f"{prospect.company_name} - no public description",
-            "crunchbase_id": prospect.crunchbase_id or "not_found",
-            "funding_round_type": brief.funding.round_type if brief else "none",
-            "funding_amount_usd": str(int(brief.funding.amount_usd)) if brief and brief.funding.amount_usd else "0",
-            "funding_recency_days": str(brief.funding.recency_days) if brief and brief.funding.recency_days else "n/a",
-            "layoff_occurred": str(brief.layoffs.occurred).lower() if brief else "false",
-            "layoff_recency_days": str(brief.layoffs.recency_days) if brief and brief.layoffs.recency_days else "n/a",
-            "job_posts_total": str(brief.job_posts.total_open_roles) if brief else "0",
-            "job_posts_engineering": str(brief.job_posts.engineering_roles) if brief else "0",
-            "job_posts_ai_ml": str(brief.job_posts.ai_ml_roles) if brief else "0",
-            "leadership_change": str(brief.leadership.new_leader).lower() if brief else "false",
-            "ai_maturity_score": str(brief.ai_maturity.score) if brief else "0",
-            "ai_maturity_confidence": str(round(brief.ai_maturity.confidence, 2)) if brief else "0",
-            "icp_segment": prospect.classification.segment.value if prospect.classification else "unclassified",
-            "gap_position": gap.prospect_position if gap else "not_analyzed",
-            "enrichment_timestamp": brief.enriched_at.isoformat() if brief else datetime.utcnow().isoformat(),
         }
+
+        if brief:
+            bw = brief.buying_window_signals
+            props.update({
+                "funding_round_type": bw.funding_event.stage or "none",
+                "funding_amount_usd": str(bw.funding_event.amount_usd or 0),
+                "funding_date": bw.funding_event.closed_at or "n/a",
+                "layoff_occurred": str(bw.layoff_event.detected).lower(),
+                "layoff_date": bw.layoff_event.date or "n/a",
+                "layoff_headcount": str(bw.layoff_event.headcount_reduction or 0),
+                "hiring_velocity_label": brief.hiring_velocity.velocity_label.value,
+                "open_roles_today": str(brief.hiring_velocity.open_roles_today),
+                "open_roles_60d_ago": str(brief.hiring_velocity.open_roles_60_days_ago),
+                "leadership_change": str(bw.leadership_change.detected).lower(),
+                "leadership_role": bw.leadership_change.role or "none",
+                "leadership_name": bw.leadership_change.new_leader_name or "none",
+                "ai_maturity_score": str(brief.ai_maturity.score),
+                "ai_maturity_confidence": str(round(brief.ai_maturity.confidence, 2)),
+                "tech_stack": ", ".join(brief.tech_stack) if brief.tech_stack else "unknown",
+                "honesty_flags": ", ".join(brief.honesty_flags) if brief.honesty_flags else "none",
+                "enrichment_timestamp": brief.generated_at,
+            })
+
+        if prospect.classification:
+            props["icp_segment"] = prospect.classification.segment.value
+            props["icp_confidence"] = str(round(prospect.classification.confidence, 2))
+
+        if gap:
+            props["gap_sector"] = gap.prospect_sector or "not_analyzed"
+            props["gap_top_quartile_benchmark"] = str(gap.sector_top_quartile_benchmark)
+            props["gap_findings_count"] = str(len(gap.gap_findings))
+
+        return props
 
     @staticmethod
     def _map_industry(raw_industry: str) -> str:
@@ -284,12 +301,12 @@ class HubSpotCRM:
 
     def _deal_properties(self, prospect: Prospect) -> dict:
         seg = prospect.classification.segment if prospect.classification else ICPSegment.UNCLASSIFIED
-        # ACV estimate based on segment
         acv_map = {
-            ICPSegment.RECENTLY_FUNDED: "480000",
-            ICPSegment.RESTRUCTURING: "540000",
-            ICPSegment.LEADERSHIP_TRANSITION: "390000",
-            ICPSegment.CAPABILITY_GAP: "190000",
+            ICPSegment.SEGMENT_1: "480000",
+            ICPSegment.SEGMENT_2: "540000",
+            ICPSegment.SEGMENT_3: "390000",
+            ICPSegment.SEGMENT_4: "190000",
+            ICPSegment.ABSTAIN: "0",
             ICPSegment.UNCLASSIFIED: "0",
         }
         return {
@@ -381,15 +398,14 @@ class HubSpotCRM:
         # Log enrichment event
         if prospect.signal_brief:
             brief = prospect.signal_brief
+            bw = brief.buying_window_signals
             body_parts = [
-                f"Funding: {brief.funding.round_type} ({brief.funding.strength.value})",
-                f"Layoffs: {'Yes' if brief.layoffs.occurred else 'No'} ({brief.layoffs.strength.value})",
-                f"Job Posts: {brief.job_posts.total_open_roles} total, "
-                f"{brief.job_posts.engineering_roles} eng ({brief.job_posts.strength.value})",
-                f"Leadership: {'Change' if brief.leadership.new_leader else 'No change'} "
-                f"({brief.leadership.strength.value})",
-                f"AI Maturity: {brief.ai_maturity.score}/3 "
-                f"(confidence {brief.ai_maturity.confidence:.2f})",
+                f"Funding: {bw.funding_event.stage or 'none'} (detected={bw.funding_event.detected})",
+                f"Layoffs: {'Yes' if bw.layoff_event.detected else 'No'}",
+                f"Hiring Velocity: {brief.hiring_velocity.velocity_label.value} ({brief.hiring_velocity.open_roles_today} roles)",
+                f"Leadership: {'Change' if bw.leadership_change.detected else 'No change'}",
+                f"AI Maturity: {brief.ai_maturity.score}/3 (confidence {brief.ai_maturity.confidence:.2f})",
+                f"Honesty Flags: {', '.join(brief.honesty_flags) if brief.honesty_flags else 'none'}",
             ]
             if prospect.classification:
                 body_parts.append(

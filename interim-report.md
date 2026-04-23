@@ -8,72 +8,73 @@ Submission: Wednesday April 23, 2026 | Acts I & II
 
 ## 1. Architecture Overview and Key Design Decisions
 
-```
-                         ┌──────────────────────┐
-                         │   FastAPI Orchestrator│
-                         │      (main.py)        │
-                         └──────┬───────────────┘
-                                │
-          ┌─────────────┬───────┼────────┬──────────────┐
-          ▼             ▼       ▼        ▼              ▼
-   ┌────────────┐ ┌──────────┐ ┌──────┐ ┌──────────┐ ┌───────┐
-   │ Enrichment │ │Qualifier │ │Email │ │Conversation│ │Booking│
-   │  Pipeline  │ │ (ICP)    │ │+SMS  │ │  Manager  │ │Engine │
-   └─────┬──────┘ └────┬─────┘ └──┬───┘ └─────┬─────┘ └──┬────┘
-         │              │          │            │          │
-   ┌─────┴──────┐       │     ┌───┴────┐       │     ┌───┴────┐
-   │Crunchbase  │       │     │Resend/ │       │     │Cal.com │
-   │Job Posts   │       │     │MailSend│       │     │  API   │
-   │Layoffs.fyi │       │     │AT SMS  │       │     └────────┘
-   │AI Maturity │       │     └────────┘       │
-   │Gap Analysis│       │                      │
-   └────────────┘       │               ┌──────┴──────┐
-                        │               │  HubSpot    │
-                        └───────────────│  MCP/API    │
-                                        └─────────────┘
-   ┌─────────────────────────────────────────────────────┐
-   │  Observability: Langfuse  │  Eval: τ²-Bench        │
-   └─────────────────────────────────────────────────────┘
-```
-
-### Prospect Lifecycle Flow
+### Consolidated System Architecture
 
 ```
- Inbound Lead
-      │
-      ▼
- ┌─────────────────────────────────────────────────────────────┐
- │                  ENRICHMENT PIPELINE                        │
- │  Crunchbase ──► Funding ──► Layoffs ──► Job Posts ──►      │
- │  (~0.01s)      (~0.01s)    (~0.01s)    (~0.01s)            │
- │       Leadership Detection ──► AI Maturity ──► Gap Analysis│
- │       (~15s, Playwright)      (~8s, LLM)    (~10s, LLM)   │
- └─────────────────────────┬───────────────────────────────────┘
-                           ▼
-                  ICP Classification
-                  (rule-based, <0.01s)
-                           │
-          ┌────────────────┼────────────────┐
-          ▼                ▼                ▼
-    Segment 1-4        Abstain         Disqualified
-    (pitch email)   (exploratory)      (no contact)
-          │                │
-          └───────┬────────┘
-                  ▼
-           Email Outreach
-           (~13s, LLM composition)
-                  │
-                  ▼
-         Reply Classification
-    ┌──────┬──────┬───────┬──────┐
-    ▼      ▼      ▼       ▼      ▼
- engaged curious defer  object  hard_no
-    │      │      │       │      │
-    ▼      ▼      ▼       ▼      ▼
- qualify  context close  handle  opt-out
-  + book  + Cal  grace  pattern  HubSpot
-  call    link   fully  match
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        FastAPI Orchestrator (main.py)                       │
+│                    https://conversion-engine-2nti.onrender.com              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌────────────────────────┐  │
+│  │ ENRICHMENT        │   │ QUALIFICATION     │   │ CONVERSATION MANAGER   │  │
+│  │ PIPELINE          │   │                   │   │                        │  │
+│  │ ┌──────────────┐  │   │ ICP Classifier    │   │ Reply Classification   │  │
+│  │ │Crunchbase ODM│  │   │ (4 segments +     │   │ (6 classes: engaged,   │  │
+│  │ │ firmographics│  │   │  abstention)       │   │  curious, hard_no,     │  │
+│  │ │ + funding    │  │   │                   │   │  soft_defer, objection, │  │
+│  │ ├──────────────┤  │   │ Confidence ≥ 0.6  │   │  ambiguous)            │  │
+│  │ │Layoffs.fyi   │  │   │ or abstain        │   │                        │  │
+│  │ │ CSV parser   │  │   └──────────────────┘   │ Human Handoff Rules    │  │
+│  │ ├──────────────┤  │                           │ (pricing, staffing,    │  │
+│  │ │Job Posts     │  │                           │  legal, C-level >2K)   │  │
+│  │ │ (Playwright) │  │                           └────────────────────────┘  │
+│  │ ├──────────────┤  │                                                       │
+│  │ │Leadership    │  │   ┌──────────────────────────────────────────────┐    │
+│  │ │ Detection    │  │   │         CHANNEL HIERARCHY                    │    │
+│  │ │ (CB + web)   │  │   │                                              │    │
+│  │ ├──────────────┤  │   │  ① EMAIL (Primary — cold outreach)           │    │
+│  │ │AI Maturity   │  │   │     Resend API → prospect inbox              │    │
+│  │ │ Scorer (LLM) │  │   │     Reply webhook → /webhooks/email/reply    │    │
+│  │ ├──────────────┤  │   │              │                                │    │
+│  │ │Competitor Gap│  │   │              ▼ (prospect replies + prefers    │    │
+│  │ │ Analysis(LLM)│  │   │                  fast scheduling)             │    │
+│  │ └──────────────┘  │   │  ② SMS (Secondary — warm lead scheduling)    │    │
+│  └──────────────────┘   │     Africa's Talking sandbox                  │    │
+│                          │     Inbound webhook → /webhooks/sms/inbound  │    │
+│                          │     STOP/HELP auto-handled                   │    │
+│                          │              │                                │    │
+│                          │              ▼ (discovery call booked)        │    │
+│                          │  ③ VOICE (Final — human-delivered call)      │    │
+│                          │     Cal.com booking → Tenacious delivery lead│    │
+│                          │     Agent books; human delivers              │    │
+│                          └──────────────────────────────────────────────┘    │
+│                                                                             │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌────────────────────────┐  │
+│  │ EMAIL COMPOSER    │   │ BOOKING ENGINE    │   │ CRM (HubSpot)         │  │
+│  │ (LLM, signal-    │   │ Cal.com API       │   │ Contacts, Companies,  │  │
+│  │  grounded, style │   │ Mock slots in     │   │ Deals, Notes          │  │
+│  │  guide enforced) │   │ safe mode         │   │ Custom properties     │  │
+│  └──────────────────┘   └──────────────────┘   │ for enrichment data   │  │
+│                                                  └────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  KILL SWITCH: LIVE_MODE=false (default)                                     │
+│  All outbound → local sink (data/outbound_sink/)  │  All outputs: draft=true│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  OBSERVABILITY: Langfuse (cloud) + local JSONL     │  EVAL: τ²-Bench retail │
+│  Per-trace cost attribution, LLM call tracing      │  pass@1 + Wilson 95% CI│
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Channel Hierarchy Rationale
+
+Tenacious prospects are founders, CTOs, and VPs Engineering who live in email. The system enforces a strict channel escalation:
+
+1. **Email (primary):** All cold outreach starts here. Signal-grounded emails composed by LLM, sent via Resend. Reply webhooks feed back into the conversation manager.
+2. **SMS (secondary):** Only activated after a prospect has replied by email and prefers fast coordination for scheduling. Africa's Talking sandbox handles outbound + inbound with STOP/HELP compliance. The conversation manager triggers SMS handoff via `should_switch_to_sms` in the reply handler.
+3. **Voice (final):** The discovery call itself — booked by the agent via Cal.com, but delivered by a human Tenacious delivery lead. The agent never conducts voice calls; it prepares a context brief (`hiring_signal_brief.json` + `competitor_gap_brief.json`) attached to the Cal.com booking for the human.
+
+This hierarchy is enforced in `agent/main.py` at the `/prospects/{prospect_id}/reply` endpoint, which checks `prospect.channel` and the conversation manager's `should_switch_to_sms` flag before routing responses.
 
 ### Key Design Decisions
 
@@ -91,16 +92,14 @@ Submission: Wednesday April 23, 2026 | Acts I & II
 
 ## 2. Production Stack Status
 
-| Component | Status | Verification |
+| Component | Status | Verification Evidence |
 |---|---|---|
-| **Resend (Email)** | ✅ Running | Webhook registered at `/webhooks/email/reply`. Test emails routed to sink. API key configured. |
-| **Africa's Talking (SMS)** | ✅ Running | Sandbox account active. Webhook at `/webhooks/sms/inbound`. Inbound SMS correctly classified and routed. |
-| **HubSpot Developer Sandbox** | ✅ Connected | Portal ID 148322728. Contact creation, deal creation, and event logging verified. Custom properties for `tenacious_status=draft` configured. |
-| **Cal.com** | ✅ Running | API key configured. Booking engine produces mock slots (weekdays, 10am/2pm/4pm ET). Bookings routed to sink in safe mode. |
-| **Langfuse** | ✅ Running | Cloud free tier. Traces visible for enrichment spans, outbound events, and τ²-Bench evaluations. Public key `pk-lf-4aec0b20` active. |
-| **Render Deployment** | ✅ Live | `https://conversion-engine-2nti.onrender.com/health` returns `status: ok`. All endpoints accessible. |
-
-All five integrations verified running via the 7/7 demo test (100% pass rate, 60.9s total).
+| **Resend (Email)** | ✅ Running | Webhook registered at `/webhooks/email/reply`. 11 test emails logged to sink at `data/outbound_sink/emails/` (files `20260421_121848_p-001.json` through `20260422_100808_test-001.json`). Trace reference: `out_email_send_test-001_0` in `eval/trace_log.jsonl` confirms email routed to sink with `status: sink`. |
+| **Africa's Talking (SMS)** | ✅ Running | Sandbox account active. Webhook at `/webhooks/sms/inbound`. SMS handler correctly parses STOP/HELP keywords and routes to conversation manager. Sink directory at `data/outbound_sink/sms/` created and writable. |
+| **HubSpot Developer Sandbox** | ✅ Connected | Portal ID 148322728. 4 sink records at `data/outbound_sink/hubspot/` confirm contact, company, and note creation: `20260421_152340_company_hs-final.json`, `20260421_152340_contact_hs-final.json`, `20260421_152340_note_hs-final.json`, `20260421_171927_company_live-001.json`. Custom properties for ICP segment, AI maturity score, enrichment timestamp, and conversation state configured via `/hubspot/setup` endpoint. |
+| **Cal.com** | ✅ Running | Booking engine produces mock slots (weekdays only, 10am/2pm/4pm ET). Sink directory at `data/outbound_sink/bookings/` created. Booking records include `prospect_id`, `slot_time`, `notes`, and `draft: true` metadata. |
+| **Langfuse** | ✅ Running | Cloud free tier. Tracer writes dual output: Langfuse cloud + local `eval/trace_log.jsonl`. Trace log contains 22 entries including enrichment spans (`span_crunchbase_firmographics_full-test_0`, `span_funding_signal_full-test_0`, etc.), outbound events (`out_email_send_test-001_0`, `out_enrichment_complete_full-test_0`), and τ²-Bench evaluation traces (`tau2_dev_quick_0_0` through `tau2_dev_quick_4_0`). Cost tracking active: model costs for `qwen/qwen3-235b-a22b` at $0.20/M input, $0.60/M output. |
+| **Render Deployment** | ✅ Live | `https://conversion-engine-2nti.onrender.com/health` returns `{"status": "ok", "live_mode": false, "kill_switch": "ENGAGED"}`. Full API docs at `/docs`. Webhook URLs registered for Resend and Africa's Talking callbacks. |
 
 ---
 
@@ -112,7 +111,40 @@ All five integrations verified running via the 7/7 demo test (100% pass rate, 60
 | **Job-post velocity scraping** | ✅ Producing output | Playwright-based scraper extracts roles from public career pages. Classifies engineering vs AI/ML roles. Computes `velocity_label` (tripled/doubled/flat/declined/insufficient_signal). |
 | **Layoffs.fyi integration** | ✅ Producing output | CSV parser checks company name against layoffs dataset. Returns date, headcount reduction, percentage cut. Strength scored by recency (≤120 days = strong). |
 | **Leadership-change detection** | ✅ Producing output | Two-source detection: Crunchbase `leadership_hire` field (structured) + Playwright fallback scraping press/about pages for appointment patterns. |
-| **AI maturity scoring (0–3)** | ✅ Producing output | LLM-scored from 6 signal inputs per the official rubric. Returns score, confidence, and per-signal `AIMaturityJustification` objects with weight and source URL. |
+| **AI maturity scoring (0–3)** | ✅ Producing output | LLM-scored from 6 weighted signal inputs (detailed below). Returns score, confidence, and per-signal `AIMaturityJustification` objects with weight and source URL. |
+
+### AI Maturity Scoring Logic (0–3)
+
+The AI maturity score is a public-signal estimate of how seriously a prospect engages with AI. The LLM evaluates 6 signal inputs, each with an assigned weight, and produces an integer score 0–3 with a confidence value.
+
+**Signal inputs and weights:**
+
+| Signal | Weight | What the scorer looks for |
+|---|---|---|
+| AI-adjacent open roles | HIGH | ML engineer, applied scientist, LLM engineer, AI PM, data platform engineer. Counted as a fraction of total engineering openings. ≥3 AI roles out of 10+ total = strong signal. |
+| Named AI/ML leadership | HIGH | Head of AI, VP Data, Chief Scientist on public team page or LinkedIn. Presence = strong signal; absence is not proof of absence. |
+| Public GitHub org activity | MEDIUM | Recent commits on repos involving model training, inference, or AI tooling. Checked but weighted lower because many companies keep AI work private. |
+| Executive commentary | MEDIUM | CEO or CTO posts, keynotes, or interviews in the last 12 months naming AI as strategic. |
+| Modern data/ML stack | LOW | BuiltWith or job-post signals for dbt, Snowflake, Databricks, W&B, Ray, vLLM. |
+| Strategic communications | LOW | Annual reports, fundraising press, or investor letters positioning AI as priority. |
+
+**Scoring scale:**
+
+- **Score 0:** No public signal of AI engagement. The prospect is either intentionally silent or absent from AI. Zero HIGH-weight signals detected.
+- **Score 1:** Early signals. One or two MEDIUM/LOW-weight inputs present (e.g., a blog post mentioning AI, or modern data stack detected), but no dedicated AI roles or leadership. Typically 0 HIGH-weight signals, 1–2 MEDIUM/LOW.
+- **Score 2:** Active engagement. At least one HIGH-weight signal present (dedicated AI/ML roles OR named AI leadership), plus supporting MEDIUM signals. This is the threshold that gates Segment 4 pitches.
+- **Score 3:** Mature AI function. Multiple HIGH-weight signals (both AI roles AND named leadership), recent executive commitment, and supporting MEDIUM/LOW signals. Requires strong evidence across at least 3 signal categories.
+
+**Confidence scoring:** The LLM also outputs a confidence value (0.0–1.0) reflecting how much evidence supports the score. A score of 2 backed by one ambiguous job post gets confidence ~0.4; a score of 2 backed by 3 AI roles + a named VP Data gets confidence ~0.85. When confidence < 0.5, the pipeline sets the `weak_ai_maturity_signal` honesty flag, which causes the email composer to use interrogative phrasing ("Are you exploring AI capabilities?" rather than "Your AI team is growing").
+
+**How the score changes the pitch:**
+- Segment 4 is BLOCKED when AI maturity < 2 (hard gate in `classifier.py` line 82)
+- Segment 1 at high readiness (2–3): "scale your AI team faster than in-house hiring"
+- Segment 1 at low readiness (0–1): "stand up your first AI function with a dedicated squad"
+- Segment 2 follows the same pattern
+- Segment 3 is unaffected — the new leader's own AI stance matters, not the company's prior state
+
+**Implementation:** The scoring prompt in `agent/enrichment/ai_maturity.py` sends all available signal data (job posts, tech stack, company description, employee count) to the LLM with explicit instructions to be conservative — "if evidence is thin, score lower and set confidence lower. Never over-claim." The LLM returns structured JSON with the score, confidence, justification strings, and a signal_inputs dict mapping each signal name to its observed value.
 
 ### Sample Enrichment Output (from 40-interaction test)
 
