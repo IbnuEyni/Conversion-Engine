@@ -205,11 +205,26 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
         logger.warning(f"HubSpot log failed: {e}")
 
     if result.get("reply_text"):
+        # Generate booking link if call should be booked
+        booking_link = ""
+        if result.get("should_book_call"):
+            booking_link = booking.generate_booking_link(
+                prospect_name=prospect.contact_name or prospect.company_name,
+                prospect_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
+                prospect_id=prospect_id,
+            )
+            prospect.state = ConversationState.CALL_BOOKED
+            new_state = ConversationState.CALL_BOOKED
+
+        reply_body = result["reply_text"]
+        if booking_link:
+            reply_body += f"\n\nBook your discovery call here: {booking_link}"
+
         if prospect.channel == Channel.EMAIL:
             sender.send(
                 to_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
                 subject=f"Re: {prospect.company_name}",
-                body=result["reply_text"],
+                body=reply_body,
                 prospect_id=prospect_id,
             )
         elif prospect.channel == Channel.SMS:
@@ -217,9 +232,12 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
                 ConversationState.ENGAGED, ConversationState.QUALIFIED,
                 ConversationState.CALL_BOOKED, ConversationState.HANDED_OFF,
             )
+            sms_body = result["reply_text"][:120]
+            if booking_link:
+                sms_body = f"{result['reply_text'][:80]}\nBook: {booking_link}"
             sms.send(
                 to_phone=prospect.contact_phone or "+1234567890",
-                message=result["reply_text"][:160],
+                message=sms_body[:160],
                 prospect_id=prospect_id,
                 is_warm_lead=is_warm,
             )
@@ -317,6 +335,30 @@ async def sms_inbound_webhook(request: Request):
     result = sms.handle_inbound(from_phone, message)
     logger.info(f"SMS webhook: {from_phone} -> {result['action']}")
     return result
+
+
+@app.post("/webhooks/calcom/booking")
+async def calcom_booking_webhook(request: Request):
+    """Webhook for Cal.com booking confirmations."""
+    body = await request.json()
+    logger.info(f"Cal.com webhook received: {json.dumps(body)[:200]}")
+    result = booking.confirm_booking(body)
+
+    # Find and update prospect by email
+    attendee_email = result.get("prospect_email", "")
+    for p in prospects.values():
+        if p.contact_email and p.contact_email.lower() == attendee_email.lower():
+            p.state = ConversationState.CALL_BOOKED
+            p.calcom_booking_id = result.get("calcom_booking_id", "")
+            p.updated_at = datetime.utcnow()
+            try:
+                crm.upsert_contact(p)
+                crm.log_event(p, "calcom_booking_confirmed", f"Booking ID: {result.get('calcom_booking_id')}")
+            except Exception:
+                pass
+            break
+
+    return {"status": "booking_confirmed", **result}
 
 
 @app.get("/prospects")

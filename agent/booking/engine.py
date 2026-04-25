@@ -1,4 +1,16 @@
-"""Cal.com booking engine for discovery calls."""
+"""Cal.com booking engine for discovery calls.
+
+Provides:
+- generate_booking_link(): creates a shareable Cal.com scheduling link
+- get_available_slots(): fetches open slots from Cal.com API
+- book_slot(): books a specific slot and syncs to HubSpot
+- confirm_booking(): processes Cal.com webhook confirmations
+
+Invoked from:
+- agent/conversation/manager.py (when should_book_call=True)
+- agent/main.py /prospects/:id/reply endpoint
+- Both email and SMS reply handlers trigger booking when prospect is qualified
+"""
 
 from __future__ import annotations
 import json
@@ -18,6 +30,25 @@ class BookingEngine:
     def __init__(self):
         self._sink_dir = Path("data/outbound_sink/bookings")
         self._sink_dir.mkdir(parents=True, exist_ok=True)
+
+    def generate_booking_link(self, prospect_name: str, prospect_email: str, prospect_id: str = "") -> str:
+        """Generate a Cal.com scheduling link for the prospect.
+        
+        Returns a URL the prospect can click to self-schedule.
+        Used in both email replies and SMS messages when should_book_call=True.
+        """
+        if settings.calcom_api_key and settings.calcom_event_type_id:
+            base = settings.calcom_base_url.replace("/v1", "").replace("/api", "")
+            link = (
+                f"{base}/booking/{settings.calcom_event_type_id}"
+                f"?name={prospect_name.replace(' ', '+')}"
+                f"&email={prospect_email}"
+                f"&metadata[prospect_id]={prospect_id}"
+            )
+            logger.info(f"Generated Cal.com booking link for {prospect_name}: {link}")
+            return link
+        # Fallback: return a placeholder link
+        return f"https://cal.com/tenacious/discovery?name={prospect_name.replace(' ', '+')}&email={prospect_email}"
 
     async def get_available_slots(self, days_ahead: int = 7) -> list[dict]:
         """Get available slots from Cal.com."""
@@ -91,6 +122,28 @@ class BookingEngine:
         self._log(booking)
         self._sync_booking_to_hubspot(booking)
         return booking
+
+    def confirm_booking(self, webhook_payload: dict) -> dict:
+        """Process Cal.com booking confirmation webhook.
+        
+        Called from /webhooks/calcom/booking endpoint.
+        Updates prospect state and syncs to HubSpot.
+        """
+        booking_id = webhook_payload.get("id", "")
+        attendee = webhook_payload.get("attendees", [{}])[0] if webhook_payload.get("attendees") else {}
+        result = {
+            "calcom_booking_id": booking_id,
+            "prospect_email": attendee.get("email", ""),
+            "prospect_name": attendee.get("name", ""),
+            "start_time": webhook_payload.get("startTime", ""),
+            "end_time": webhook_payload.get("endTime", ""),
+            "status": "confirmed",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        self._log(result)
+        self._sync_booking_to_hubspot(result)
+        logger.info(f"Booking confirmed: {booking_id} for {result['prospect_email']}")
+        return result
 
     def _sync_booking_to_hubspot(self, booking: dict):
         """Sync booking event to HubSpot — update contact and log engagement."""
