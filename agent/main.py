@@ -207,12 +207,21 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
     if result.get("reply_text"):
         # Generate booking link if call should be booked
         booking_link = ""
+        booking_confirmation = None
         if result.get("should_book_call"):
             booking_link = booking.generate_booking_link(
                 prospect_name=prospect.contact_name or prospect.company_name,
                 prospect_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
                 prospect_id=prospect_id,
             )
+            # Book a slot
+            booking_confirmation = booking.book_slot_sync(
+                prospect_name=prospect.contact_name or prospect.company_name,
+                prospect_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
+                notes=f"Discovery call for {prospect.company_name}",
+                prospect_id=prospect_id,
+            )
+            prospect.calcom_booking_id = booking_confirmation.get("calcom_booking_id", "")
             prospect.state = ConversationState.CALL_BOOKED
             new_state = ConversationState.CALL_BOOKED
 
@@ -227,6 +236,8 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
                 body=reply_body,
                 prospect_id=prospect_id,
             )
+            prospect.emails_sent += 1
+            prospect.last_contact = datetime.utcnow()
         elif prospect.channel == Channel.SMS:
             is_warm = prospect.state in (
                 ConversationState.ENGAGED, ConversationState.QUALIFIED,
@@ -249,6 +260,7 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
         "reply_class": result.get("reply_class", "unknown"),
         "should_book_call": result["should_book_call"],
         "needs_human_handoff": result["needs_human_handoff"],
+        "booking": booking_confirmation if booking_confirmation else None,
     }
 
 

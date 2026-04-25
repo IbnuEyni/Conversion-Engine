@@ -45,6 +45,73 @@ class BookingEngine:
         logger.info(f"Generated Cal.com booking link for {prospect_name}: {link}")
         return link
 
+    def book_slot_sync(
+        self,
+        prospect_name: str,
+        prospect_email: str,
+        notes: str = "",
+        prospect_id: str = "",
+    ) -> dict:
+        """Synchronous booking — picks the next available slot and books it.
+        
+        Used from FastAPI sync endpoints where async is not available.
+        Returns booking confirmation with slot_time, booking_id, status.
+        """
+        from datetime import timedelta
+        slots = self._mock_slots()
+        chosen = slots[0] if slots else {"time": (datetime.utcnow() + timedelta(days=2)).replace(hour=14, minute=0).isoformat() + "Z"}
+
+        booking = {
+            "prospect_name": prospect_name,
+            "prospect_email": prospect_email,
+            "slot_time": chosen["time"],
+            "notes": notes,
+            "prospect_id": prospect_id,
+            "event_type": "Discovery Call",
+            "duration_minutes": 30,
+            "timestamp": datetime.utcnow().isoformat(),
+            "draft": True,
+        }
+
+        if settings.is_live and settings.calcom_api_key:
+            # Try real Cal.com v2 booking
+            try:
+                resp = httpx.post(
+                    f"{settings.calcom_base_url}/bookings",
+                    headers={"Authorization": f"Bearer {settings.calcom_api_key}"},
+                    json={
+                        "eventTypeId": settings.calcom_event_type_id,
+                        "start": booking["slot_time"],
+                        "attendee": {
+                            "name": prospect_name,
+                            "email": prospect_email,
+                        },
+                        "metadata": {"prospect_id": prospect_id},
+                    },
+                    timeout=15,
+                )
+                if resp.status_code in (200, 201):
+                    data = resp.json()
+                    booking["status"] = "booked"
+                    booking["calcom_booking_id"] = str(data.get("data", {}).get("id", data.get("id", "")))
+                    booking["booking_url"] = data.get("data", {}).get("url", "")
+                    logger.info(f"Cal.com booking created: {booking['calcom_booking_id']}")
+                else:
+                    logger.warning(f"Cal.com booking failed ({resp.status_code}): {resp.text[:200]}")
+                    booking["status"] = "booked_locally"
+                    booking["calcom_booking_id"] = f"local_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            except Exception as e:
+                logger.warning(f"Cal.com API error: {e}")
+                booking["status"] = "booked_locally"
+                booking["calcom_booking_id"] = f"local_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        else:
+            booking["status"] = "booked_locally"
+            booking["calcom_booking_id"] = f"mock_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+        self._log(booking)
+        self._sync_booking_to_hubspot(booking)
+        return booking
+
     async def get_available_slots(self, days_ahead: int = 7) -> list[dict]:
         """Get available slots from Cal.com."""
         if not settings.calcom_api_key:

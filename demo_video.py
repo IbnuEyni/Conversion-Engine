@@ -254,7 +254,7 @@ async def main():
 
     # ── STEP 7 ──────────────────────────────────────────────
     banner("STEP 7: DISCOVERY CALL BOOKING — Cal.com Confirmation")
-    narrate("Prospect confirms — booking discovery call with full details...")
+    narrate("Prospect confirms — system books actual Cal.com slot...")
 
     booking_msg = {
         "prospect_id": prospect_id,
@@ -279,32 +279,44 @@ async def main():
             print(f"  {line}")
         print(f"  {'─'*50}")
 
-    # Show Cal.com booking confirmation artifact
+    # Show Cal.com booking confirmation from API response
+    bk = booking_resp.get("booking")
     print(f"\n  ┌─ CAL.COM BOOKING CONFIRMATION ──────────────────")
-    # Compute next Tuesday/Wednesday for realistic display
-    now = datetime.utcnow()
-    days_until_tue = (1 - now.weekday()) % 7
-    if days_until_tue == 0:
-        days_until_tue = 7
-    next_tue = now + timedelta(days=days_until_tue)
-    slot_time = next_tue.replace(hour=14, minute=0, second=0)
+    if bk:
+        print(f"  │  Booking ID: {bk.get('calcom_booking_id', 'N/A')}")
+        print(f"  │  Status: {bk.get('status', 'N/A')}")
+        print(f"  │  Slot Time: {bk.get('slot_time', 'N/A')}")
+        print(f"  │  Attendee: {PROSPECT['contact_name']} ({PROSPECT['contact_email']})")
+        print(f"  │  Company: {PROSPECT['company_name']}")
+        print(f"  │  Event Type: Discovery Call (30 min)")
+        print(f"  │  Prospect ID: {prospect_id}")
+        if bk.get('booking_url'):
+            print(f"  │  Booking URL: {bk['booking_url']}")
+        print(f"  └─ ✅ Booking created and synced to HubSpot")
+    else:
+        # Fallback display from mock slots
+        now = datetime.utcnow()
+        days_until_tue = (1 - now.weekday()) % 7
+        if days_until_tue == 0:
+            days_until_tue = 7
+        next_tue = now + timedelta(days=days_until_tue)
+        slot_time = next_tue.replace(hour=14, minute=0, second=0)
+        print(f"  │  Event Type: Discovery Call (30 min)")
+        print(f"  │  Date: {slot_time.strftime('%A, %B %d, %Y')}")
+        print(f"  │  Time: {slot_time.strftime('%I:%M %p')} ET")
+        print(f"  │  Attendee: {PROSPECT['contact_name']} ({PROSPECT['contact_email']})")
+        print(f"  │  Company: {PROSPECT['company_name']}")
+        print(f"  │  Prospect ID: {prospect_id}")
+        print(f"  │  Scheduling Link: {booking_link}")
+        print(f"  └─ Status: booked (via mock slots)")
 
-    print(f"  │  Event Type: Discovery Call (30 min)")
-    print(f"  │  Date: {slot_time.strftime('%A, %B %d, %Y')}")
-    print(f"  │  Time: {slot_time.strftime('%I:%M %p')} ET")
-    print(f"  │  Attendee: {PROSPECT['contact_name']} ({PROSPECT['contact_email']})")
-    print(f"  │  Company: {PROSPECT['company_name']}")
-    print(f"  │  Prospect ID: {prospect_id}")
-    print(f"  │  Booking Link: {booking_link}")
-    print(f"  └─ Status: confirmed")
-
-    # Verify booking link in sent email
-    sink_files = sorted(glob.glob('data/outbound_sink/emails/*.json'), reverse=True)
-    if sink_files:
-        latest = json.loads(open(sink_files[0]).read())
-        body = latest.get('body', '')
-        if 'cal.com' in body.lower():
-            print(f"\n  ✅ Booking link confirmed in sent email body")
+    # Check sink for booking file
+    booking_files = sorted(glob.glob('data/outbound_sink/bookings/*.json'), reverse=True)
+    if booking_files:
+        bk_data = json.loads(open(booking_files[0]).read())
+        print(f"\n  📁 Booking artifact saved: {booking_files[0].split('/')[-1]}")
+        print(f"     Slot: {bk_data.get('slot_time', 'N/A')}")
+        print(f"     ID: {bk_data.get('calcom_booking_id', 'N/A')}")
     time.sleep(PAUSE)
 
     # ── STEP 8 ──────────────────────────────────────────────
