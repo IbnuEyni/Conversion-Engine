@@ -204,17 +204,16 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
     except Exception as e:
         logger.warning(f"HubSpot log failed: {e}")
 
+    booking_link = ""
+    booking_confirmation = None
+
     if result.get("reply_text"):
-        # Generate booking link if call should be booked
-        booking_link = ""
-        booking_confirmation = None
         if result.get("should_book_call"):
             booking_link = booking.generate_booking_link(
                 prospect_name=prospect.contact_name or prospect.company_name,
                 prospect_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
                 prospect_id=prospect_id,
             )
-            # Book a slot
             booking_confirmation = booking.book_slot_sync(
                 prospect_name=prospect.contact_name or prospect.company_name,
                 prospect_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
@@ -260,7 +259,7 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
         "reply_class": result.get("reply_class", "unknown"),
         "should_book_call": result["should_book_call"],
         "needs_human_handoff": result["needs_human_handoff"],
-        "booking": booking_confirmation if booking_confirmation else None,
+        "booking": booking_confirmation,
     }
 
 

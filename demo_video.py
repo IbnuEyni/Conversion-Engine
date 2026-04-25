@@ -288,8 +288,12 @@ async def main():
         print(f"  │  Slot Time: {bk.get('slot_time', 'N/A')}")
         print(f"  │  Attendee: {PROSPECT['contact_name']} ({PROSPECT['contact_email']})")
         print(f"  │  Company: {PROSPECT['company_name']}")
-        print(f"  │  Event Type: Discovery Call (30 min)")
+        print(f"  │  Event Type: {bk.get('event_type', 'Discovery Call')} ({bk.get('duration_minutes', 30)} min)")
         print(f"  │  Prospect ID: {prospect_id}")
+        # Build confirmation link from booking ID
+        bk_id = bk.get('calcom_booking_id', '')
+        confirm_link = f"https://cal.com/booking/{bk_id}" if bk_id and not bk_id.startswith('mock') and not bk_id.startswith('local') else f"https://cal.com/amir-a-zbucqo/secret?rescheduleUid={bk_id}"
+        print(f"  │  Confirmation Link: {confirm_link}")
         if bk.get('booking_url'):
             print(f"  │  Booking URL: {bk['booking_url']}")
         print(f"  └─ ✅ Booking created and synced to HubSpot")
