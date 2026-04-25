@@ -1,6 +1,13 @@
 # Probe Library — Adversarial Probes for the Conversion Engine
 
-32 structured probes organized by category. Each probe includes the input stimulus, expected correct behavior, observed failure (if any), business cost, and trace evidence.
+33 structured probes organized by category. Each probe includes:
+- **ID**: Unique probe identifier (category.number)
+- **Category**: One of 10 failure categories
+- **Setup**: Input stimulus / test scenario
+- **Expected Failure**: What should happen vs what could go wrong
+- **Observed**: Actual system behavior when tested
+- **Trigger Rate**: Frequency of failure in testing (n tested)
+- **Business Cost**: Tenacious-specific financial impact if failure occurs
 
 ---
 

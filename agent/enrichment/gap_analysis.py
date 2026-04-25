@@ -74,10 +74,17 @@ def analyze_competitor_gap(
     description: str = "",
 ) -> CompetitorGapBrief:
     if not peer_companies:
+        # Sparse sector handling: return brief with explicit "no peers" flag
         return CompetitorGapBrief(
             prospect_domain=prospect_brief.prospect_domain,
             prospect_sector=industry,
             prospect_ai_maturity_score=prospect_brief.ai_maturity.score,
+            suggested_pitch_shift="No sector peers found in Crunchbase sample — use general Tenacious positioning without competitor-gap framing",
+            gap_quality_self_check=GapQualitySelfCheck(
+                all_peer_evidence_has_source_url=False,
+                at_least_one_gap_high_confidence=False,
+                prospect_silent_but_sophisticated_risk=prospect_brief.ai_maturity.confidence < 0.5,
+            ),
         )
 
     peer_lines = []

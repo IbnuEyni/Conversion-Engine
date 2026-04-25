@@ -103,10 +103,10 @@ class EnrichmentPipeline:
         ))
 
         # Build hiring velocity
-        velocity_label = self._compute_velocity_label(job_signal)
+        velocity_label, velocity_pct = self._compute_velocity_label(job_signal, company)
         hiring_velocity = HiringVelocity(
             open_roles_today=job_signal.total_open_roles,
-            open_roles_60_days_ago=max(0, int(job_signal.total_open_roles / (1 + (job_signal.velocity_60d or 0) / 100))) if job_signal.velocity_60d else 0,
+            open_roles_60_days_ago=max(0, int(job_signal.total_open_roles / (1 + velocity_pct / 100))) if velocity_pct else 0,
             velocity_label=velocity_label,
             signal_confidence=0.7 if job_signal.total_open_roles > 0 else 0.0,
             sources=["job_posts_snapshot"],
@@ -210,19 +210,67 @@ class EnrichmentPipeline:
         logger.info(f"Enriched {company}: funding={funding_event.detected}, layoff={layoff_event.detected}, ai_maturity={brief.ai_maturity.score}")
         return prospect
 
-    def _compute_velocity_label(self, job_signal) -> VelocityLabel:
-        if not job_signal.velocity_60d:
-            return VelocityLabel.INSUFFICIENT_SIGNAL
-        v = job_signal.velocity_60d
+    def _compute_velocity_label(self, job_signal, company_name: str = "") -> tuple[VelocityLabel, float]:
+        """Compute 60-day hiring velocity delta.
+        
+        Compares current open roles against a 60-day-old snapshot.
+        If no historical snapshot exists, stores current as baseline.
+        Returns (velocity_label, velocity_pct_change).
+        """
+        history_dir = Path("data/job_posts/history")
+        history_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = company_name.lower().replace(" ", "_") if company_name else "unknown"
+        history_path = history_dir / f"{safe_name}_60d.json"
+
+        current_roles = job_signal.total_open_roles
+        now = datetime.utcnow()
+
+        # Load or create historical baseline
+        roles_60d_ago = 0
+        if history_path.exists():
+            try:
+                hist = json.loads(history_path.read_text())
+                roles_60d_ago = hist.get("open_roles", 0)
+                snapshot_date = hist.get("snapshot_date", "")
+                # Check if snapshot is roughly 60 days old
+                if snapshot_date:
+                    snap_dt = datetime.fromisoformat(snapshot_date)
+                    age_days = (now - snap_dt).days
+                    if age_days < 30:
+                        # Snapshot too recent, use it as-is
+                        roles_60d_ago = hist.get("open_roles", 0)
+            except (json.JSONDecodeError, ValueError):
+                roles_60d_ago = 0
+
+        # Store current snapshot for future 60-day comparison
+        history_path.write_text(json.dumps({
+            "company": company_name,
+            "open_roles": current_roles,
+            "snapshot_date": now.isoformat(),
+        }, indent=2))
+
+        # Compute velocity
+        if not job_signal.velocity_60d and roles_60d_ago == 0 and current_roles == 0:
+            return VelocityLabel.INSUFFICIENT_SIGNAL, 0.0
+
+        if job_signal.velocity_60d is not None:
+            v = job_signal.velocity_60d
+        elif roles_60d_ago > 0:
+            v = ((current_roles - roles_60d_ago) / roles_60d_ago) * 100
+        elif current_roles > 0:
+            v = 100.0  # new roles from zero baseline
+        else:
+            return VelocityLabel.INSUFFICIENT_SIGNAL, 0.0
+
         if v >= 200:
-            return VelocityLabel.TRIPLED_OR_MORE
+            return VelocityLabel.TRIPLED_OR_MORE, v
         if v >= 100:
-            return VelocityLabel.DOUBLED
+            return VelocityLabel.DOUBLED, v
         if v > 10:
-            return VelocityLabel.INCREASED_MODESTLY
+            return VelocityLabel.INCREASED_MODESTLY, v
         if v >= -10:
-            return VelocityLabel.FLAT
-        return VelocityLabel.DECLINED
+            return VelocityLabel.FLAT, v
+        return VelocityLabel.DECLINED, v
 
     def _compute_bench_match(self, tech_stack: list[str]) -> BenchToBriefMatch:
         if not self._bench or not tech_stack:

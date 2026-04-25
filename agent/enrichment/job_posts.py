@@ -61,7 +61,9 @@ class JobPostScraper:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
     def scrape(self, company_name: str, website: str, use_cache: bool = True) -> JobPostSignal:
-        """Scrape public career page for job post data."""
+        """Scrape public career page for job post data.
+        Respects robots.txt. No login. No captcha bypass.
+        """
         safe_name = re.sub(r"[^a-z0-9]", "_", company_name.lower())
         cache_path = self._cache_dir / f"{safe_name}.json"
 
@@ -75,6 +77,11 @@ class JobPostScraper:
         if not website or "http" not in website:
             return JobPostSignal(strength=SignalStrength.ABSENT, source="no_website")
 
+        # Check robots.txt before scraping
+        if not self._check_robots_txt(website):
+            logger.info(f"robots.txt disallows scraping for {website}")
+            return JobPostSignal(strength=SignalStrength.ABSENT, source="robots_txt_disallowed")
+
         try:
             raw = self._scrape_career_page(company_name, website)
             raw["scraped_at"] = datetime.utcnow().isoformat()
@@ -84,6 +91,25 @@ class JobPostScraper:
         except Exception as e:
             logger.warning(f"Scrape failed for {company_name}: {e}")
             return JobPostSignal(strength=SignalStrength.ABSENT, source=f"scrape_failed: {e}")
+
+    def _check_robots_txt(self, website: str) -> bool:
+        """Check robots.txt to see if /careers is allowed for our bot."""
+        from urllib.robotparser import RobotFileParser
+        try:
+            base = website.rstrip("/")
+            rp = RobotFileParser()
+            rp.set_url(f"{base}/robots.txt")
+            rp.read()
+            # Check if any career path is allowed
+            for path in CAREER_PATH_CANDIDATES:
+                if rp.can_fetch("TenaciousBot", path):
+                    return True
+                if rp.can_fetch("*", path):
+                    return True
+            return False
+        except Exception:
+            # If robots.txt is unreachable, assume allowed (standard practice)
+            return True
 
     def _scrape_career_page(self, company_name: str, website: str) -> dict:
         """Use Playwright to scrape the career page."""
