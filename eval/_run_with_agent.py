@@ -17,7 +17,6 @@ from tau2.runner.batch import run_domain
 from tau2.data_model.simulation import TextRunConfig
 
 import argparse
-import json
 
 # Register our custom agent
 registry.register_agent_factory(create_policy_aware_agent, "policy_aware_agent")
@@ -43,7 +42,7 @@ def main():
         domain=args.domain,
         agent=args.agent,
         llm_agent=args.agent_llm,
-        llm_args_agent={"temperature": 0.3},
+        llm_args_agent={"temperature": 0.0},
         llm_user=args.user_llm,
         llm_args_user={"temperature": 0.0},
         num_trials=args.num_trials,

@@ -144,7 +144,7 @@ def send_outreach(prospect_id: str):
         raise HTTPException(500, f"Email composition failed: {e}")
 
     result = sender.send(
-        to_email=prospect.contact_email or f"synthetic+{prospect_id}@sink.local",
+        to_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
         subject=email["subject"],
         body=email["body"],
         prospect_id=prospect_id,
@@ -207,7 +207,7 @@ def handle_reply(prospect_id: str, inp: ReplyInput):
     if result.get("reply_text"):
         if prospect.channel == Channel.EMAIL:
             sender.send(
-                to_email=prospect.contact_email or f"synthetic+{prospect_id}@sink.local",
+                to_email=prospect.contact_email or f"synthetic-{prospect_id}@example.com",
                 subject=f"Re: {prospect.company_name}",
                 body=result["reply_text"],
                 prospect_id=prospect_id,

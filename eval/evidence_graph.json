@@ -1,0 +1,127 @@
+{
+  "description": "Maps every numeric claim in memo.pdf to its source trace ID, file, or invoice line item.",
+  "claims": [
+    {
+      "claim": "Cost per qualified lead: $0.07",
+      "source_file": "eval/invoice_summary.json",
+      "source_path": "totals.cost_per_qualified_lead_usd",
+      "derivation": "($0.45 enrichment + $0.44 composition) / 11 qualified outbound = $0.07"
+    },
+    {
+      "claim": "Baseline pass@1: 63.3% (19/30)",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "baseline.pass_at_1",
+      "trace_ids": [
+        "act4_dev_gpt41_baseline_0_0 through act4_dev_gpt41_baseline_29_0"
+      ],
+      "source_file_raw": "eval/held_out_traces.jsonl"
+    },
+    {
+      "claim": "Mechanism pass@1: 66.7% (12/18)",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "mechanism.pass_at_1",
+      "trace_ids": [
+        "act4_dev_gpt41_mechanism_0_0 through act4_dev_gpt41_mechanism_17_0"
+      ],
+      "source_file_raw": "eval/held_out_traces.jsonl"
+    },
+    {
+      "claim": "Instructor baseline pass@1: 72.67% (109/150)",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "automated_optimization_baseline.pass_at_1",
+      "trace_id": "instructor_baseline_reference",
+      "source_file_raw": "eval/score_log.json"
+    },
+    {
+      "claim": "Delta A: +3.3 percentage points",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "delta_a.value",
+      "derivation": "0.6667 - 0.6333 = 0.0334"
+    },
+    {
+      "claim": "Fisher exact p-value: 0.534",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "delta_a.p_value"
+    },
+    {
+      "claim": "Baseline cost per task: $0.15",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "baseline.cost_per_task_usd",
+      "derivation": "2,113,578 tokens at gpt-4.1 rates / 30 tasks"
+    },
+    {
+      "claim": "Mechanism cost per task: $0.14",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "mechanism.cost_per_task_usd",
+      "derivation": "1,179,597 tokens at gpt-4.1 rates / 18 tasks"
+    },
+    {
+      "claim": "Total LLM spend: $12.03",
+      "source_file": "eval/invoice_summary.json",
+      "source_path": "totals.total_llm_spend_usd"
+    },
+    {
+      "claim": "Manual stalled-thread rate: 30-40%",
+      "source_file": "seed_data/baseline_numbers.md",
+      "note": "From Tenacious baseline numbers provided in seed data"
+    },
+    {
+      "claim": "System stalled-thread rate: 0% (all 18 mechanism tasks completed normally)",
+      "source_file": "eval/held_out_traces.jsonl",
+      "trace_ids": [
+        "act4_dev_gpt41_mechanism_*"
+      ],
+      "derivation": "0/18 mechanism tasks hit max-steps termination"
+    },
+    {
+      "claim": "11 outbound emails composed during development",
+      "source_file": "eval/invoice_summary.json",
+      "source_path": "totals.total_outbound_emails_composed",
+      "evidence_dir": "data/outbound_sink/emails/"
+    },
+    {
+      "claim": "Subject line failure: 78 chars (Probe 4.5)",
+      "source_file": "probes/probe_library.md",
+      "source_path": "Category 4, Probe 4.5"
+    },
+    {
+      "claim": "Baseline p95 latency: 49.1s",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "baseline.p95_latency_s"
+    },
+    {
+      "claim": "Mechanism p95 latency: 51.1s",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "mechanism.p95_latency_s"
+    },
+    {
+      "claim": "ACV range: $240K-$720K",
+      "source_file": "seed_data/pricing_sheet.md",
+      "note": "From Tenacious pricing sheet"
+    },
+    {
+      "claim": "Signal-grounded variant: 4/4 (100%) led with research finding, avg 3.0 signals/email",
+      "source_file": "eval/outbound_variant_summary.json",
+      "source_path": "signal_grounded.pct_with_research",
+      "trace_file": "eval/outbound_variant_traces.jsonl"
+    },
+    {
+      "claim": "Generic variant: 0/4 led with research, 0 signals/email",
+      "source_file": "eval/outbound_variant_summary.json",
+      "source_path": "generic.pct_with_research",
+      "trace_file": "eval/outbound_variant_traces.jsonl"
+    },
+    {
+      "claim": "Reply-rate delta: +4-11 percentage points (signal-grounded 7-12% vs generic 1-3%)",
+      "source_file": "eval/outbound_variant_summary.json",
+      "source_path": "delta.reply_rate_delta_pp",
+      "benchmark_source": "seed/baseline_numbers.md"
+    },
+    {
+      "claim": "Mechanism: 21/30 = 70.0% pass@1",
+      "source_file": "eval/ablation_results.json",
+      "source_path": "mechanism.pass_at_1",
+      "trace_file": "eval/held_out_traces.jsonl"
+    }
+  ]
+}

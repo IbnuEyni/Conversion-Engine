@@ -116,7 +116,7 @@ class HubSpotCRM:
         classification = prospect.classification
 
         props = {
-            "email": prospect.contact_email or f"synthetic+{prospect.id}@sink.local",
+            "email": prospect.contact_email or f"synthetic-{prospect.id}@example.com",
             "firstname": (prospect.contact_name or "Unknown").split()[0],
             "lastname": " ".join((prospect.contact_name or "Unknown").split()[1:]) or "Contact",
             "jobtitle": prospect.contact_title or "Engineering Leader",

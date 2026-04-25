@@ -1,0 +1,28 @@
+{
+  "comparison_date": "2026-04-25T13:44:46.393045",
+  "prospects_tested": 4,
+  "signal_grounded": {
+    "count": 4,
+    "led_with_research": 4,
+    "pct_with_research": 100.0,
+    "included_ai_maturity": 3,
+    "included_competitor_gap": 0,
+    "avg_signals_per_email": 3.0,
+    "projected_reply_rate": "7-12%",
+    "source": "seed/baseline_numbers.md (Clay/Smartlead 2025)"
+  },
+  "generic": {
+    "count": 4,
+    "led_with_research": 0,
+    "pct_with_research": 0,
+    "included_ai_maturity": 0,
+    "included_competitor_gap": 0,
+    "avg_signals_per_email": 0,
+    "projected_reply_rate": "1-3%",
+    "source": "seed/baseline_numbers.md (LeadIQ/Apollo 2026)"
+  },
+  "delta": {
+    "reply_rate_delta_pp": "4-11",
+    "description": "Signal-grounded outbound projects 7-12% reply rate vs 1-3% generic, a 4-11 percentage point improvement"
+  }
+}

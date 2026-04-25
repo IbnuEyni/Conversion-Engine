@@ -1,0 +1,80 @@
+{
+  "period": "2026-04-21 to 2026-04-25",
+  "project": "The Conversion Engine — Tenacious Consulting",
+  "llm_spend": {
+    "dev_model": {
+      "model": "qwen/qwen3-235b-a22b",
+      "provider": "OpenRouter",
+      "usage": "enrichment pipeline, email composition, conversation management",
+      "estimated_cost_usd": 0.45,
+      "note": "Dev-phase LLM calls for pipeline testing, ~15 enrichment runs"
+    },
+    "eval_model_baseline": {
+      "model": "openrouter/openai/gpt-4.1",
+      "provider": "OpenRouter",
+      "usage": "tau2-bench baseline evaluation, 30 tasks x 1 trial",
+      "total_tokens": 2113578,
+      "cost_usd": 4.42,
+      "cost_per_task_usd": 0.15
+    },
+    "eval_model_mechanism": {
+      "model": "openrouter/openai/gpt-4.1",
+      "provider": "OpenRouter",
+      "usage": "tau2-bench mechanism evaluation, 18 tasks x 1 trial",
+      "total_tokens": 1179597,
+      "cost_usd": 2.46,
+      "cost_per_task_usd": 0.14
+    },
+    "eval_model_dev_runs": {
+      "model": "openrouter/qwen/qwen3-235b-a22b",
+      "provider": "OpenRouter",
+      "usage": "Early dev-slice runs (5 tasks x 3 runs)",
+      "estimated_cost_usd": 1.20
+    },
+    "eval_user_simulator": {
+      "model": "openrouter/openai/gpt-4.1",
+      "provider": "OpenRouter",
+      "usage": "User simulator for all tau2-bench runs",
+      "estimated_cost_usd": 3.50
+    }
+  },
+  "infrastructure": {
+    "render_deployment": {
+      "service": "Render Web Service",
+      "tier": "free",
+      "cost_usd": 0.00
+    },
+    "langfuse_observability": {
+      "service": "Langfuse Cloud",
+      "tier": "free",
+      "cost_usd": 0.00
+    },
+    "hubspot_crm": {
+      "service": "HubSpot",
+      "tier": "free developer",
+      "cost_usd": 0.00
+    },
+    "calcom_booking": {
+      "service": "Cal.com",
+      "tier": "free",
+      "cost_usd": 0.00
+    },
+    "resend_email": {
+      "service": "Resend",
+      "tier": "free",
+      "cost_usd": 0.00
+    }
+  },
+  "totals": {
+    "total_llm_spend_usd": 12.03,
+    "total_infra_spend_usd": 0.00,
+    "total_spend_usd": 12.03,
+    "total_enrichment_runs": 15,
+    "total_outbound_emails_composed": 11,
+    "total_tau2_simulations": 63,
+    "cost_per_enrichment_run_usd": 0.03,
+    "cost_per_outbound_email_usd": 0.04,
+    "cost_per_qualified_lead_usd": 0.07,
+    "derivation": "cost_per_qualified_lead = (enrichment_cost + composition_cost) / qualified_leads. At 15 enrichments producing ~11 qualified outbound, cost = ($0.45 + $0.44) / 11 = $0.07 per qualified lead"
+  }
+}

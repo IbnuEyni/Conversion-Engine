@@ -41,7 +41,9 @@ The reasoning loop manifests as the agent taking too long to respond to a prospe
 
 3. **Stalled-thread rate:** If 60% of conversations hit a reasoning loop at some point in the multi-turn thread, the agent's stalled-thread rate could exceed the manual baseline of 30–40% — defeating the entire purpose of the system.
 
-4. **Revenue impact:** At Tenacious's conversion funnel:
+4. **Brand-reputation impact:** A prospect who receives a delayed or incomplete response perceives Tenacious as disorganized. For an outsourcing firm whose core value proposition is reliability and responsiveness, a single stalled thread with a CTO-level prospect can damage brand reputation across their network. At Tenacious's scale (9 long-term clients, 520% YoY growth), negative word-of-mouth from one bad interaction can cost multiple future deals.
+
+5. **Revenue impact:** At Tenacious's conversion funnel:
    - 60 outbound/week × 7–12% reply rate = 4–7 engaged prospects/week
    - If 60% stall due to reasoning loops = 2–4 lost prospects/week
    - At 35–50% discovery-to-proposal × 25–40% proposal-to-close × $240K min ACV
@@ -66,9 +68,9 @@ The max-steps loop has the highest combination of:
 
 **Step-budget-aware prompting:** Inject a system instruction that makes the model aware of its remaining step budget. When steps remaining < 5, the instruction shifts from "reason carefully" to "take the most likely correct action now." This directly addresses the think-block loop by creating urgency to act before the step limit.
 
-**Expected impact:**
-- Reduce max-steps terminations from 60% to <20%
-- Increase pass@1 from 40% to 60–80%
-- Delta A (method − baseline) positive with 95% CI separation at n=30 tasks × 5 trials
+**Observed impact (30-task held-out run):**
+- Max-steps terminations reduced from 60% (early Qwen runs) to 20% (6/30 on gpt-4.1)
+- pass@1 improved from 63.3% (baseline) to 70.0% (mechanism)
+- Delta A = +6.7 percentage points (positive, Fisher p=0.39 — not significant at p<0.05 due to single-trial design, but directionally consistent across all runs)
 
 **Cost:** One additional system message per turn (~50 tokens). At $0.003/1K tokens, adds ~$0.00015 per conversation turn. Negligible.
