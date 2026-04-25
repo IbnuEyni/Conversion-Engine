@@ -37,18 +37,13 @@ class BookingEngine:
         Returns a URL the prospect can click to self-schedule.
         Used in both email replies and SMS messages when should_book_call=True.
         """
-        if settings.calcom_api_key and settings.calcom_event_type_id:
-            base = settings.calcom_base_url.replace("/v1", "").replace("/api", "")
-            link = (
-                f"{base}/booking/{settings.calcom_event_type_id}"
-                f"?name={prospect_name.replace(' ', '+')}"
-                f"&email={prospect_email}"
-                f"&metadata[prospect_id]={prospect_id}"
-            )
-            logger.info(f"Generated Cal.com booking link for {prospect_name}: {link}")
-            return link
-        # Fallback: return a placeholder link
-        return f"https://cal.com/tenacious/discovery?name={prospect_name.replace(' ', '+')}&email={prospect_email}"
+        link = (
+            f"https://cal.com/amir-a-zbucqo/secret"
+            f"?name={prospect_name.replace(' ', '+')}"
+            f"&email={prospect_email}"
+        )
+        logger.info(f"Generated Cal.com booking link for {prospect_name}: {link}")
+        return link
 
     async def get_available_slots(self, days_ahead: int = 7) -> list[dict]:
         """Get available slots from Cal.com."""
