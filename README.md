@@ -1,6 +1,43 @@
 # The Conversion Engine
 
-Automated Lead Generation and Conversion System for Tenacious Consulting and Outsourcing.
+**Week 10**: Automated Lead Generation and Conversion System for Tenacious Consulting and Outsourcing.
+
+## Related Work
+
+**Week 11**: [Tenacious Sales Evaluation Bench](https://github.com/IbnuEyni/tenacious-sales-bench) - Domain-specific benchmark built from this system's failure analysis.
+
+## Project Structure
+
+```
+├── agent/                    # Conversion Engine core
+├── eval/                     # τ²-Bench evaluation results
+├── probes/                   # 33 adversarial probes
+├── seed_data/               # Tenacious reference materials
+└── data/                    # Shared data (Crunchbase, layoffs, etc.)
+```
+
+## Week 10 → Week 11 Connection
+
+This system's artifacts became the foundation for Week 11's evaluation benchmark:
+- **Probe Library** (33 probes) → Benchmark task seeds
+- **Trace Log** (200+ interactions) → Real failure examples  
+- **Failure Taxonomy** (16% trigger rate) → Priority dimensions
+- **Agent Behavior** → Baseline for improvement measurement
+
+## Quick Start
+
+**Conversion Engine**:
+```bash
+python3 -m agent.main &
+curl -X POST http://localhost:8000/prospects/enrich --data '{"company": "Example Corp"}'
+```
+
+**Evaluation Benchmark** (separate repository):
+```bash
+git clone https://github.com/IbnuEyni/tenacious-sales-bench.git
+cd tenacious-sales-bench
+python3 validate_tasks.py
+```
 
 ## Architecture
 

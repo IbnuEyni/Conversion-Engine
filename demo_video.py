@@ -258,7 +258,7 @@ async def main():
 
     booking_msg = {
         "prospect_id": prospect_id,
-        "message": "Yes, let's do it! I'm free Tuesday or Wednesday afternoon next week.",
+        "message": "Ynckaljk nckjasdhjn",
         "channel": "email"
     }
 
