@@ -38,6 +38,9 @@ class LLMClient:
             "messages": messages,
             "temperature": temperature or self.temperature,
             "max_tokens": max_tokens,
+            "extra_body": {
+                "chat_template_kwargs": {"enable_thinking": False}
+            },
         }
         if response_format:
             kwargs["response_format"] = response_format
