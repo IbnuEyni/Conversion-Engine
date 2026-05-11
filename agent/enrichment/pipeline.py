@@ -15,6 +15,7 @@ from agent.enrichment.crunchbase import CrunchbaseEnricher
 from agent.enrichment.layoffs import LayoffsChecker
 from agent.enrichment.job_posts import JobPostScraper
 from agent.enrichment.leadership import LeadershipDetector
+from agent.enrichment.scrapling_enricher import ScraplingEnricher
 from agent.enrichment.ai_maturity import score_ai_maturity
 from agent.enrichment.gap_analysis import analyze_competitor_gap
 from agent.observability.tracer import tracer
@@ -29,6 +30,7 @@ class EnrichmentPipeline:
         self.layoffs = LayoffsChecker()
         self.job_scraper = JobPostScraper()
         self.leadership_detector = LeadershipDetector()
+        self.scrapling_enricher = ScraplingEnricher()
         self._loaded = False
         self._bench = None
 
@@ -95,7 +97,8 @@ class EnrichmentPipeline:
 
         # 4. Job post signal
         with tracer.span("job_post_scrape", prospect_id=prospect.id):
-            job_signal = self._get_job_signal(company, prospect.website)
+            linkedin_url = getattr(prospect, 'linkedin_url', '') or ''
+            job_signal = self._get_job_signal(company, prospect.website, linkedin_url)
         data_sources.append(DataSourceCheck(
             source="job_posts_snapshot",
             status="success" if job_signal.total_open_roles > 0 else "no_data",
@@ -115,11 +118,20 @@ class EnrichmentPipeline:
         # 5. Leadership change
         with tracer.span("leadership_detection", prospect_id=prospect.id):
             cb_record = self.crunchbase.find_company(company)
-            leadership_raw = self.leadership_detector.detect(
+            # Try Scrapling-based detection first (faster, includes LinkedIn)
+            linkedin_url = getattr(prospect, 'linkedin_url', '') or ''
+            leadership_raw = self.scrapling_enricher.scrape_leadership(
                 company_name=company,
-                crunchbase_record=cb_record,
                 website=prospect.website or "",
+                linkedin_url=linkedin_url,
             )
+            # Fallback to original detector if Scrapling found nothing
+            if leadership_raw.strength == SignalStrength.ABSENT:
+                leadership_raw = self.leadership_detector.detect(
+                    company_name=company,
+                    crunchbase_record=cb_record,
+                    website=prospect.website or "",
+                )
         data_sources.append(DataSourceCheck(
             source="leadership_detection",
             status="success" if leadership_raw.new_leader else "no_data",
@@ -299,21 +311,30 @@ class EnrichmentPipeline:
             prospect.industry, exclude_name=prospect.company_name, limit=10
         )
 
-    def _get_job_signal(self, company: str, website: str = ""):
+    def _get_job_signal(self, company: str, website: str = "", linkedin_url: str = ""):
         from agent.models import SignalStrength
-        # Import the old-style JobPostSignal for compatibility with job_posts scraper
-        from agent.enrichment.job_posts import JobPostScraper
-        if not website:
-            from collections import namedtuple
-            DummySignal = namedtuple("DummySignal", ["total_open_roles", "engineering_roles", "ai_ml_roles", "velocity_60d", "top_stacks", "strength", "source"])
+        from collections import namedtuple
+        DummySignal = namedtuple("DummySignal", ["total_open_roles", "engineering_roles", "ai_ml_roles", "velocity_60d", "top_stacks", "strength", "source"])
+
+        if not website and not linkedin_url:
             return DummySignal(0, 0, 0, None, [], SignalStrength.ABSENT, "no_website")
+
+        # Try Scrapling enricher first (faster, handles LinkedIn, adaptive selectors)
         try:
-            return self.job_scraper.scrape(company, website)
+            signal = self.scrapling_enricher.scrape_jobs(company, website=website, linkedin_url=linkedin_url)
+            if signal.total_open_roles > 0:
+                return signal
         except Exception as e:
-            logger.warning(f"Job scrape failed for {company}: {e}")
-            from collections import namedtuple
-            DummySignal = namedtuple("DummySignal", ["total_open_roles", "engineering_roles", "ai_ml_roles", "velocity_60d", "top_stacks", "strength", "source"])
-            return DummySignal(0, 0, 0, None, [], SignalStrength.ABSENT, f"error: {e}")
+            logger.debug(f"Scrapling scrape failed for {company}: {e}")
+
+        # Fallback to Playwright-based scraper for JS-heavy pages
+        if website:
+            try:
+                return self.job_scraper.scrape(company, website)
+            except Exception as e:
+                logger.warning(f"Job scrape failed for {company}: {e}")
+
+        return DummySignal(0, 0, 0, None, [], SignalStrength.ABSENT, "scrape_failed")
 
     def save_brief(self, prospect: Prospect, output_dir: str = "data/briefs"):
         """Save hiring signal brief and gap brief as JSON."""

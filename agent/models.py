@@ -216,6 +216,7 @@ class Prospect(BaseModel):
     location: Optional[str] = None
     description: Optional[str] = None
     website: Optional[str] = None
+    linkedin_url: Optional[str] = None
 
     # Enrichment outputs
     signal_brief: Optional[HiringSignalBrief] = None
