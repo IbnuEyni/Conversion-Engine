@@ -48,6 +48,18 @@ export async function sendReply(prospectId: string, message: string, channel = "
   return res.json();
 }
 
+export async function fetchThread(prospectId: string) {
+  const res = await fetch(`${API_BASE}/prospects/${prospectId}/thread`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchThreads() {
+  const res = await fetch(`${API_BASE}/threads`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export type HealthData = {
   status: string;
   live_mode: boolean;

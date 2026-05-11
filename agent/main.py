@@ -404,6 +404,44 @@ def get_prospect(prospect_id: str):
     return prospect.model_dump(mode="json")
 
 
+@app.get("/prospects/{prospect_id}/thread")
+def get_thread(prospect_id: str):
+    """Get conversation thread for a prospect."""
+    if prospect_id not in prospects:
+        raise HTTPException(404, "Prospect not found")
+    return conversations.get_thread(prospect_id)
+
+
+@app.get("/stats/pipeline")
+def pipeline_stats():
+    """Get pipeline state counts for dashboard."""
+    counts: dict[str, int] = {}
+    for p in prospects.values():
+        state = p.state.value
+        counts[state] = counts.get(state, 0) + 1
+    return counts
+
+
+@app.get("/threads")
+def list_threads():
+    """List all active conversation threads."""
+    threads = []
+    for pid, prospect in prospects.items():
+        thread = conversations.get_thread(pid)
+        if thread:
+            last_msg = thread[-1] if thread else None
+            threads.append({
+                "prospect_id": pid,
+                "company": prospect.company_name,
+                "contact_name": prospect.contact_name,
+                "state": prospect.state.value,
+                "message_count": len(thread),
+                "last_message": last_msg,
+                "segment": prospect.classification.segment.value if prospect.classification else "none",
+            })
+    return sorted(threads, key=lambda t: t["last_message"]["timestamp"] if t["last_message"] else "", reverse=True)
+
+
 if __name__ == "__main__":
     import uvicorn
     import os
