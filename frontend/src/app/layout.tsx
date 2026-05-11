@@ -27,6 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/inbox" className="block px-3 py-2 rounded text-sm text-slate-300 hover:bg-slate-700">
                 Inbox
               </a>
+              <a href="/analytics" className="block px-3 py-2 rounded text-sm text-slate-300 hover:bg-slate-700">
+                Analytics
+              </a>
             </nav>
             <div className="absolute bottom-6 left-6 right-6">
               <div className="px-3 py-2 rounded bg-slate-800 text-xs text-slate-400">

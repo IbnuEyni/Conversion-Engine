@@ -422,6 +422,68 @@ def pipeline_stats():
     return counts
 
 
+@app.get("/stats/analytics")
+def analytics_stats():
+    """Get analytics data for charts."""
+    segment_counts: dict[str, int] = {}
+    state_counts: dict[str, int] = {}
+    reply_classes: dict[str, int] = {}
+    total_emails = 0
+    total_replies = 0
+    total_booked = 0
+    total_opted_out = 0
+
+    for p in prospects.values():
+        seg = p.classification.segment.value if p.classification else "unclassified"
+        segment_counts[seg] = segment_counts.get(seg, 0) + 1
+        state = p.state.value
+        state_counts[state] = state_counts.get(state, 0) + 1
+        total_emails += p.emails_sent
+        if state in ("engaged", "qualified", "call_booked", "handed_off"):
+            total_replies += 1
+        if state == "call_booked":
+            total_booked += 1
+        if state == "opted_out":
+            total_opted_out += 1
+
+    # Get reply class distribution from conversation threads
+    for pid in prospects:
+        thread = conversations.get_thread(pid)
+        for msg in thread:
+            if msg.get("role") == "prospect":
+                total_replies += 0  # already counted above
+
+    # Funnel data
+    total_prospects = len(prospects)
+    enriched = sum(1 for p in prospects.values() if p.state.value != "new")
+    outreach_sent = sum(1 for p in prospects.values() if p.emails_sent > 0)
+    engaged = sum(1 for p in prospects.values() if p.state.value in ("engaged", "qualified", "call_booked", "handed_off"))
+    qualified = sum(1 for p in prospects.values() if p.state.value in ("qualified", "call_booked", "handed_off"))
+    booked = sum(1 for p in prospects.values() if p.state.value == "call_booked")
+
+    return {
+        "segment_counts": segment_counts,
+        "state_counts": state_counts,
+        "funnel": [
+            {"stage": "Prospects", "count": total_prospects},
+            {"stage": "Enriched", "count": enriched},
+            {"stage": "Outreach Sent", "count": outreach_sent},
+            {"stage": "Engaged", "count": engaged},
+            {"stage": "Qualified", "count": qualified},
+            {"stage": "Call Booked", "count": booked},
+        ],
+        "totals": {
+            "prospects": total_prospects,
+            "emails_sent": total_emails,
+            "replies": total_replies,
+            "calls_booked": total_booked,
+            "opted_out": total_opted_out,
+            "reply_rate": round(total_replies / max(outreach_sent, 1) * 100, 1),
+            "booking_rate": round(total_booked / max(total_replies, 1) * 100, 1),
+        },
+    }
+
+
 @app.get("/threads")
 def list_threads():
     """List all active conversation threads."""

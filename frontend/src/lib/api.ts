@@ -60,6 +60,12 @@ export async function fetchThreads() {
   return res.json();
 }
 
+export async function fetchAnalytics() {
+  const res = await fetch(`${API_BASE}/stats/analytics`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 export type HealthData = {
   status: string;
   live_mode: boolean;
